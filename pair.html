@@ -390,12 +390,21 @@ form.addEventListener('submit', async (e) => {
 
   const raw = numberInput.value.trim();
   let localDigits = raw.replace(/[^0-9]/g, '');
-  // Most countries write local numbers with a leading 0 that must be
-  // dropped for the international/E.164 form — this is the single most
-  // common reason a correctly-dialable local number fails to pair.
-  if (localDigits.startsWith('0')) localDigits = localDigits.slice(1);
+  // Strip an international "00" prefix if the user pasted one.
+  if (localDigits.startsWith('00')) localDigits = localDigits.slice(2);
 
-  const digits = dialDigits + localDigits;
+  // If the user pasted a full international number that already starts with
+  // the selected country's dial code, do NOT prepend the dial code again —
+  // that produced numbers like 2372376... which pass length checks but can
+  // never pair. If it starts with a local trunk "0" (and is not already
+  // international), drop that single 0 as most countries require.
+  let digits;
+  if (localDigits.startsWith(dialDigits) && localDigits.length >= 8 && localDigits.length <= 15) {
+    digits = localDigits;
+  } else {
+    if (localDigits.startsWith('0')) localDigits = localDigits.slice(1);
+    digits = dialDigits + localDigits;
+  }
 
   if (localDigits.length < 5 || digits.length < 8 || digits.length > 15) {
     showState('error');

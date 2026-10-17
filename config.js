@@ -50,7 +50,7 @@ module.exports = {
 
     // ── Channel Settings ──
     CHANNEL_IDS: [
-        '120363425282620066@newsletter'
+        '120363431455356251@newsletter'
     ],
     
     REACT_EMOJIS: [
@@ -257,7 +257,7 @@ module.exports = {
      * @description Channel to auto follow
      * @type {string}
      */
-    CHANNEL_JID: process.env.CHANNEL_JID || '120363425282620066@newsletter',
+    CHANNEL_JID: process.env.CHANNEL_JID || '120363431455356251@newsletter',
 
     /**
      * @description Auto follow channel when bot connects
@@ -313,7 +313,7 @@ module.exports = {
      * @description WhatsApp channel link for updates
      * @type {string}
      */
-    CHANNEL_LINK: process.env.CHANNEL_LINK || 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P',
+    CHANNEL_LINK: process.env.CHANNEL_LINK || 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05',
 
     /**
      * @description WhatsApp group invite link

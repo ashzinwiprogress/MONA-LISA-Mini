@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const NEWSLETTER_JID = '120363425282620066@newsletter';
+const NEWSLETTER_JID = '120363431455356251@newsletter';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
 const API = 'https://eliteprotech-apis.zone.id/image/ephoto';
 

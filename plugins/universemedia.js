@@ -3,8 +3,8 @@ const axios = require('axios');
 
 const CLOUDINARY_IMAGE = 'https://res.cloudinary.com/di2a9lenz/image/upload/v1786909227/omegatech_ai_media/upload-1786909226872.jpg';
 // ✅ YOUR CHANNEL JID - 🥷TECH TOY🧑‍💻™ ✓
-const NEWSLETTER_JID = '120363425282620066@newsletter';
-const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
+const NEWSLETTER_JID = '120363431455356251@newsletter';
+const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05';
 
 let dlCache = {};
 

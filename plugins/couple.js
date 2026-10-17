@@ -3,7 +3,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const NEWSLETTER_JID = '120363425282620066@newsletter';
+const NEWSLETTER_JID = '120363431455356251@newsletter';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
 
 const APIKEY = 'dc_live_PVxGPDbjSTMy8_-_m9rxiBVbx7JSYkD1';

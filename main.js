@@ -93,7 +93,7 @@ const OWNER_NAME = config.OWNER_NAME || 'Progress Tech';
 const OWNER_NUMBER = config.OWNER_NUMBER || ['237682432296'];
 
 // ========== CHANNEL SETTINGS ==========
-const CHANNEL_JID = config.CHANNEL_JID || '120363425282620066@newsletter';
+const CHANNEL_JID = config.CHANNEL_JID || '120363431455356251@newsletter';
 const AUTO_CHANNEL_REACT_EMOJIS = config.AUTO_CHANNEL_REACT_EMOJIS || ['❤️', '🔥', '👑', '💯', '😍', '💖', '✨'];
 
 const router = express.Router();
@@ -324,8 +324,63 @@ async function closeSocketSafe(socket) {
     try { socket.ev.removeAllListeners(); } catch (_) {}
 }
 
+// ========== PHONE NUMBER NORMALIZATION ==========
+// Users paste numbers as "+237 682 432 296", "00237682432296", or
+// "237-682-432296". Stripping non-digits turned "00237..." into a
+// 14-digit string with leading zeros, which passes length checks but is
+// NOT the number WhatsApp expects — a silent, very common pairing failure.
+// Strip a leading "00" international prefix so "00237682432296" becomes
+// "237682432296".
+function normalizePhoneNumber(input) {
+    let n = String(input || '').replace(/[^0-9]/g, '');
+    if (n.startsWith('00')) n = n.slice(2);
+    return n;
+}
+
+// ========== PAIRING CODE (ROBUST) ==========
+// Some numbers fail to link because requestPairingCode() is called either
+// before the websocket has actually finished connecting, or while WhatsApp
+// is momentarily rate-limiting that number. Both show up to the user as
+// "Couldn't link device" with no explanation. Retrying a few times, spaced
+// out, and only after the socket reports it's connecting, fixes the large
+// majority of these.
+function waitForSocketConnecting(conn, timeoutMs = 20000) {
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            try { conn.ev.off('connection.update', onUpdate); } catch (_) {}
+            clearTimeout(timer);
+            resolve();
+        };
+        const onUpdate = (update) => {
+            const s = update?.connection;
+            if (s === 'connecting' || s === 'open') finish();
+        };
+        const timer = setTimeout(finish, timeoutMs);
+        try { conn.ev.on('connection.update', onUpdate); } catch (_) { finish(); }
+    });
+}
+
+async function requestPairingCodeWithRetry(conn, number, attempts = 4) {
+    let lastError;
+    for (let i = 1; i <= attempts; i++) {
+        try {
+            const code = await conn.requestPairingCode(number);
+            if (code && String(code).trim()) return code;
+            throw new Error('Empty pairing code returned');
+        } catch (e) {
+            lastError = e;
+            redxLog(`Pairing code attempt ${i}/${attempts} failed for ${number}: ${e.message}`, 'warning');
+            if (i < attempts) await delay(3000);
+        }
+    }
+    throw lastError || new Error('Failed to obtain a pairing code');
+}
+
 function isNumberAlreadyConnected(number) {
-    const n = number.replace(/[^0-9]/g, '');
+    const n = normalizePhoneNumber(number);
     const conn = activeSockets.get(n);
     if (!conn) return false;
     if (isSocketAlive(conn)) return true;
@@ -337,7 +392,7 @@ function isNumberAlreadyConnected(number) {
 }
 
 function getConnectionStatus(number) {
-    const n = number.replace(/[^0-9]/g, '');
+    const n = normalizePhoneNumber(number);
     const isConnected = activeSockets.has(n);
     const connectionTime = socketCreationTime.get(n);
     return {
@@ -619,7 +674,7 @@ async function autoFollowChannel(conn, userJid) {
 // ========== MAIN PAIR FUNCTION ==========
 async function redxPair(number, res = null) {
     let connectionLockKey;
-    const sanitizedNumber = String(number || '').replace(/[^0-9]/g, '');
+    const sanitizedNumber = normalizePhoneNumber(number);
 
     // Full international numbers (with country code) are 8–15 digits per
     // E.164. Previously only the web pairing page checked this client-side —
@@ -732,7 +787,7 @@ async function redxPair(number, res = null) {
             generateHighQualityLinkPreview: true,
             syncFullHistory: false,
             markOnlineOnConnect: config.BOT_ONLINE === 'true' || config.KEEP_ONLINE === 'true',
-            browser: Browsers.macOS('Safari'),
+            browser: Browsers.ubuntu('Chrome'),
             cachedGroupMetadata: async (jid) => groupMetaCache.get(jid) || undefined,
             getMessage: async (key) => {
                 const msg = await store.loadMessage(key.remoteJid, key.id);
@@ -833,8 +888,9 @@ async function redxPair(number, res = null) {
         if (!conn.authState.creds.registered) {
             redxLog(`🔐 Starting NEW pairing process for ${sanitizedNumber}`, 'info');
             try {
+                await waitForSocketConnecting(conn);
                 await delay(1500);
-                const code = await conn.requestPairingCode(sanitizedNumber);
+                const code = await requestPairingCodeWithRetry(conn, sanitizedNumber);
                 redxLog(`Pairing Code for ${sanitizedNumber}: ${code}`, 'success');
                 if (res && !res.headersSent) {
                     res.send({ code, status: 'new_pairing' });
@@ -1044,6 +1100,8 @@ conn.ev.on('connection.update', async (update) => {
                         try {
                             await cmd.function(conn, mek, m, {
                                 from,
+                                prefix: livePrefix,
+                                fromMe: mek.key.fromMe,
                                 body: buttonBody,
                                 isCmd: true,
                                 command: buttonCmdName,
@@ -1196,6 +1254,8 @@ conn.ev.on('connection.update', async (update) => {
 
                             await cmd.function(conn, mek, m, {
                                 from,
+                                prefix: activePrefix,
+                                fromMe: isMe,
                                 body,
                                 isCmd,
                                 command: cmdName,
@@ -1246,6 +1306,8 @@ conn.ev.on('connection.update', async (update) => {
                         try {
                             await command.function(conn, mek, m, {
                                 from,
+                                prefix: activePrefix,
+                                fromMe: isMe,
                                 body,
                                 isCmd,
                                 isGroup,
@@ -1344,7 +1406,7 @@ function setupAutoRestart(socket, number) {
 
             if (statusCode === 401 || (errorMessage && errorMessage.includes('401'))) {
                 redxLog(`Manual unlink detected for ${number}, cleaning up...`, 'warning');
-                const sanitizedNumber = number.replace(/[^0-9]/g, '');
+                const sanitizedNumber = normalizePhoneNumber(number);
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 await deleteSessionFromMongoDB(sanitizedNumber);
@@ -1362,7 +1424,7 @@ function setupAutoRestart(socket, number) {
                 // the phone stuck on "Logging in..." — so it gets its own fast,
                 // uncounted path here instead.
                 redxLog(`Restart required for ${number} (normal post-pairing step) — reconnecting immediately...`, 'info');
-                const sanitizedNumber = number.replace(/[^0-9]/g, '');
+                const sanitizedNumber = normalizePhoneNumber(number);
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 socket.ev.removeAllListeners();
@@ -1382,7 +1444,7 @@ function setupAutoRestart(socket, number) {
             const isNormalError = statusCode === 408 || (errorMessage && errorMessage.includes('QR refs attempts ended'));
             if (isNormalError) {
                 redxLog(`Normal closure for ${number} (likely pairing code expired/unused), cleaning up so it can be retried...`, 'info');
-                const sanitizedNumber = number.replace(/[^0-9]/g, '');
+                const sanitizedNumber = normalizePhoneNumber(number);
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 socket.ev.removeAllListeners();
@@ -1391,7 +1453,7 @@ function setupAutoRestart(socket, number) {
 
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                 redxLog(`Logged out for ${number} — not auto-reconnecting.`, 'error');
-                const sanitizedNumber = number.replace(/[^0-9]/g, '');
+                const sanitizedNumber = normalizePhoneNumber(number);
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 socket.ev.removeAllListeners();
@@ -1400,7 +1462,7 @@ function setupAutoRestart(socket, number) {
 
             if (statusCode === DisconnectReason.connectionReplaced || statusCode === 440) {
                 redxLog(`Connection replaced for ${number} — another session took over.`, 'warning');
-                const sanitizedNumber = number.replace(/[^0-9]/g, '');
+                const sanitizedNumber = normalizePhoneNumber(number);
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 socket.ev.removeAllListeners();
@@ -1412,7 +1474,7 @@ function setupAutoRestart(socket, number) {
             }
             if (statusCode === DisconnectReason.connectionReplaced || statusCode === 440) {
                 redxLog(`Connection replaced for ${number} — another session took over. Not reconnecting.`, 'warning');
-                const sanitizedNumber = number.replace(/[^0-9]/g, '');
+                const sanitizedNumber = normalizePhoneNumber(number);
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 socket.ev.removeAllListeners();
@@ -1425,7 +1487,7 @@ function setupAutoRestart(socket, number) {
                 restartAttempts++;
                 const waitMs = Math.min(3000 * restartAttempts, 30000);
                 redxLog(`Reconnecting ${number} (${restartAttempts}/${maxRestartAttempts}) in ${waitMs / 1000}s...`, 'warning');
-                const sanitizedNumber = number.replace(/[^0-9]/g, '');
+                const sanitizedNumber = normalizePhoneNumber(number);
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 socket.ev.removeAllListeners();
@@ -1436,7 +1498,7 @@ function setupAutoRestart(socket, number) {
                 } catch (e) { redxLog(`Reconnection failed for ${number}: ${e.message}`, 'error'); }
             } else {
                 redxLog(`Max restart attempts reached for ${number} — clearing so it can be re-paired manually.`, 'error');
-                const sanitizedNumber = number.replace(/[^0-9]/g, '');
+                const sanitizedNumber = normalizePhoneNumber(number);
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 socket.ev.removeAllListeners();
@@ -1461,7 +1523,7 @@ router.get('/force-code', async (req, res) => {
             });
         }
 
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = normalizePhoneNumber(number);
 
         if (!/^[0-9]{8,15}$/.test(sanitizedNumber)) {
             return res.status(400).json({
@@ -1539,12 +1601,13 @@ router.get('/force-code', async (req, res) => {
                 generateHighQualityLinkPreview: true,
                 syncFullHistory: false,
                 markOnlineOnConnect: false,
-                browser: Browsers.macOS('Safari'),
+                browser: Browsers.ubuntu('Chrome'),
                 getMessage: async () => undefined
             });
 
+            await waitForSocketConnecting(conn);
             await delay(1500);
-            const code = await conn.requestPairingCode(sanitizedNumber);
+            const code = await requestPairingCodeWithRetry(conn, sanitizedNumber);
 
             await closeSocketSafe(conn);
 
@@ -1605,7 +1668,7 @@ router.get('/force-reset', async (req, res) => {
             });
         }
 
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = normalizePhoneNumber(number);
 
         redxLog(`🔥🔥 FORCE RESET requested for ${sanitizedNumber}`, 'warning');
 
@@ -1701,7 +1764,7 @@ router.get('/check-session', async (req, res) => {
             });
         }
 
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = normalizePhoneNumber(number);
 
         const isActive = activeSockets.has(sanitizedNumber);
 
@@ -1751,7 +1814,7 @@ router.get('/pair-status', async (req, res) => {
             });
         }
 
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = normalizePhoneNumber(number);
 
         const isActive = activeSockets.has(sanitizedNumber);
         let hasMongoSession = false;
@@ -1838,7 +1901,7 @@ router.get('/status', async (req, res) => {
 router.get('/disconnect', async (req, res) => {
     const { number } = req.query;
     if (!number) return res.status(400).json({ error: 'Number required' });
-    const n = number.replace(/[^0-9]/g, '');
+    const n = normalizePhoneNumber(number);
     if (!activeSockets.has(n)) return res.status(404).json({ error: 'Not found' });
     try {
         const socket = activeSockets.get(n);
@@ -1891,7 +1954,7 @@ router.get('/update-config', async (req, res) => {
     let newConfig;
     try { newConfig = JSON.parse(configString); } catch (_) { return res.status(400).json({ error: 'Invalid config' }); }
 
-    const n = number.replace(/[^0-9]/g, '');
+    const n = normalizePhoneNumber(number);
     const socket = activeSockets.get(n);
     if (!socket) return res.status(404).json({ error: 'No active session' });
 
@@ -1910,7 +1973,7 @@ router.get('/update-config', async (req, res) => {
 router.get('/verify-otp', async (req, res) => {
     const { number, otp } = req.query;
     if (!number || !otp) return res.status(400).json({ error: 'Number and OTP required' });
-    const n = number.replace(/[^0-9]/g, '');
+    const n = normalizePhoneNumber(number);
     const verification = await verifyOTPFromMongoDB(n, otp);
     if (!verification.valid) return res.status(400).json({ error: verification.error });
     await updateUserConfigInMongoDB(n, verification.config);
@@ -1924,7 +1987,7 @@ router.get('/stats', async (req, res) => {
     if (!number) return res.status(400).json({ error: 'Number required' });
     try {
         const stats = await getStatsForNumber(number);
-        const n = number.replace(/[^0-9]/g, '');
+        const n = normalizePhoneNumber(number);
         const s = getConnectionStatus(n);
         res.json({ number: n, connectionStatus: s.isConnected ? 'Connected' : 'Disconnected', uptime: s.uptime, stats });
     } catch (e) {

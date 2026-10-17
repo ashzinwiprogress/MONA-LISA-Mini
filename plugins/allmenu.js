@@ -51,14 +51,23 @@ function uptime() {
     return `${d}d ${h}h ${m}m`;
 }
 
-function frame(title, lines) {
-    const left = `═❰ ${title} ❱`;
-    const contentWidth = Math.max(...lines.map(l => l.length + 2), left.length + 1, 22);
-    const dashCount = Math.max(contentWidth - left.length, 1);
-    const top = `╔${left}${'═'.repeat(dashCount)}╗`;
-    const body = lines.map(l => `║ ${l}`).join('\n');
-    const bottom = `╚${'═'.repeat(left.length + dashCount)}╝`;
-    return `${top}\n${body}\n${bottom}`;
+// A divider-based block. The heading and body have no closing right border,
+// so nothing can drift out of alignment regardless of emoji/wide characters.
+function block(title, lines) {
+    const head = `╭━━〔 ${title} 〕`;
+    const body = lines.map(l => `│ ${l}`).join('\n');
+    const foot = `╰━━━━━━━━━━━━━━━━━━`;
+    return `${head}\n${body}\n${foot}`;
+}
+
+function banner() {
+    return [
+        `╔═══════════════════════════╗`,
+        `   🥰 Ｍ Ｏ Ｎ Ａ  Ｌ Ｉ Ｓ Ａ 🤭`,
+        `      ⟢ V 2 · M I N I B O T ⟣`,
+        `╚═══════════════════════════╝`,
+        `   ${pick(TAGLINES)}`,
+    ].join('\n');
 }
 
 function buildMenu(pushName) {
@@ -76,42 +85,38 @@ function buildMenu(pushName) {
     const time = moment().tz("Africa/Lagos").format("HH:mm:ss");
     const date = moment().tz("Africa/Lagos").format("dddd, Do MMMM YYYY");
 
-    const statusBox = frame('⚜️ STATUS', [
+    const statusBox = block('⚜️ STATUS', [
         `👤 User     : ${pushName}`,
         `👑 Owner    : ${config.OWNER_NAME}`,
-        `⚡ Prefix   : ${config.PREFIX}`,
-        `📜 Commands : ${total}`,
-        `⏱️ Uptime   : ${uptime()}`,
-        `🕰️ Time     : ${time}`,
-        `📅 Date     : ${date}`,
+        `⚡ Prefix    : ${config.PREFIX}`,
+        `📜 Commands  : ${total}`,
+        `⏱️ Uptime    : ${uptime()}`,
+        `🕰️ Time      : ${time}`,
+        `📅 Date      : ${date}`,
     ]);
 
     const sectionBoxes = SECTIONS
         .filter(s => grouped[s.title]?.length)
-        .map(s => frame(s.title, grouped[s.title].map(p => `◈ ${config.PREFIX}${p}`)))
+        .map(s => block(s.title, grouped[s.title].map(p => `◈ ${config.PREFIX}${p}`)))
         .join('\n\n');
 
-    const channelBox = frame('📡 STAY CONNECTED', [
-        `Join the official channel:`,
-        `${config.CHANNEL_LINK}`,
+    const channelBox = block('📡 STAY CONNECTED', [
+        `📢 ${config.CHANNEL_LINK}`,
+        `🥰 Follow for updates & new features`,
     ]);
 
-    return `
-╔══════════════════════════╗
-   Ｍ Ｏ Ｎ Ａ 　 Ｌ Ｉ Ｓ Ａ
-        ⟢ V２ ⟣ ＭＩＮＩ ＢＯＴ
-${'  '}${pick(TAGLINES)}
-╚══════════════════════════╝
-
-${statusBox}
-
-${sectionBoxes}
-
-${channelBox}
-
-┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
-🥰 *MONA LISA V2* 🤭 · Powered by ${config.OWNER_NAME}
-`.trim();
+    return [
+        banner(),
+        '',
+        statusBox,
+        '',
+        sectionBoxes,
+        '',
+        channelBox,
+        '',
+        '┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈',
+        `🥰 *MONA LISA V2* 🤭 · Powered by ${config.OWNER_NAME}`,
+    ].join('\n').trim();
 }
 
 // Menu images, shown in rotation each time a chat runs .menu (1st call ->

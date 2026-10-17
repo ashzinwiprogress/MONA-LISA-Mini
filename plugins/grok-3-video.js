@@ -3,8 +3,8 @@ const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
 
-const NEWSLETTER_JID = '120363425282620066@newsletter';
-const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
+const NEWSLETTER_JID = '120363431455356251@newsletter';
+const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
 const API = 'https://sora.aritek.app/api/generate';
 

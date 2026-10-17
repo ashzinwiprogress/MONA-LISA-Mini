@@ -141,7 +141,7 @@ cmd({
     if (buttons.length < 5) {
         buttons.push({
             name: "cta_url",
-            buttonParamsJson: JSON.stringify({ display_text: "📢 Channel", url: "https://whatsapp.com/channel/0029Vb785rSBlHpWSitPY61i" })
+            buttonParamsJson: JSON.stringify({ display_text: "📢 Channel", url: "https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05" })
         });
     }
 
@@ -155,7 +155,7 @@ cmd({
         contextInfo: {
             forwardingScore: 999, isForwarded: true,
             forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363403299118246@newsletter',
+                newsletterJid: '120363431455356251@newsletter',
                 serverMessageId: 142,
                 newsletterName: 'Lady-Trish Channel ✓'
             }

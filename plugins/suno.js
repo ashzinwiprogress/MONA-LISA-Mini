@@ -51,7 +51,7 @@ async function sendSafeMusicCard(conn, chatId, track, prompt, style, quoted) {
             caption += `\n*🎤 Lyrics:*\n${lyrics.slice(0,800)}${lyrics.length>800?'...':''}\n`;
         }
         caption += `\n*⚡ Powered by Progress Tech*`;
-        caption += `\n📢 https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P`;
+        caption += `\n📢 https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05`;
 
         await conn.sendMessage(chatId, {
             image: { url: cover },
