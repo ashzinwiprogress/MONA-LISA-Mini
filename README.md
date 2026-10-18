@@ -6,19 +6,7 @@ A WhatsApp bot built on [Baileys](https://github.com/WhiskeySockets/Baileys), wi
 
 ---
 
-## ⚠️ Before you deploy — read this
-
-This project was rebuilt from a template that shipped with three things that have been **removed entirely**, not fixed or hidden:
-
-1. **`lib/system.js`** contained a 169KB obfuscated blob with anti-debugging code, wired directly into the live authenticated WhatsApp connection. It has been replaced with a small, transparent, readable file that does only what the bot actually needs (channel follow / auto-react / status handling).
-2. **A `.pair` / `.pair2` chat command** forwarded any phone number typed by any user to an unrelated third-party server, which would generate a real WhatsApp linking code for that number — a credential-harvesting pattern disguised as a "clone the bot" feature. It has been deleted.
-3. **NSFW/"leak" content plugins** (`nsfw-girls.js`, `leakvideos.js`, `dl-xdown.js`) pulled explicit content, including "leak" material, from third-party APIs on command. They have been deleted and will not be re-added.
-
-If you obtained this template from somewhere else and plan to merge changes back in from that source, **do not** reintroduce those files.
-
-**License note:** this project is derived from a template originally released under the MIT License by "ArslanMD Official" (see `LICENSE`). MIT requires the original copyright notice to be preserved in copies/substantial portions of the software, so `LICENSE` has been left intact. You may want to review this with your own judgment before public redistribution under your own name.
-
-**A general note on this class of bot:** this bot connects to WhatsApp using Baileys, an unofficial, reverse-engineered library — not WhatsApp's official Business API. That's extremely common in this ecosystem, but it does mean this kind of use isn't officially sanctioned by WhatsApp's Terms of Service, and numbers used this way can in principle be flagged or banned by WhatsApp. That risk exists independent of anything above.
+WhatsApp's official Business API. That's extremely common in this ecosystem, but it does mean this kind of use isn't officially sanctioned by WhatsApp's Terms of Service, and numbers used this way can in principle be flagged or banned by WhatsApp. That risk exists independent of anything above.
 
 ---
 
@@ -166,8 +154,7 @@ Tested: JS syntax across every file, the command-registration/import chain, the 
 ---
 
 ## 📢 Official Channel
-
-https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P
+https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05
 
 ---
 
