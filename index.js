@@ -60,4 +60,27 @@ app.listen(port, () => {
     console.log(`🚀 Server running on port ${port}`);
 });
 
+// ── Optional keep-alive ──
+// Some free hosts (e.g. Render's free plan) put an instance to sleep after 15
+// minutes without inbound web traffic, which would take the WhatsApp
+// connection down with it. Setting KEEP_ALIVE=true (on Render, which provides
+// RENDER_EXTERNAL_URL automatically) or KEEP_ALIVE_URL=<your public URL> makes
+// the bot hit its own /ping route every 10 minutes. This only helps while the
+// instance is awake — pair it with a free external monitor (see README) that
+// can also wake it up if it ever does go to sleep.
+const keepAliveBase = process.env.KEEP_ALIVE_URL
+    || (process.env.KEEP_ALIVE === 'true' ? process.env.RENDER_EXTERNAL_URL : '');
+if (keepAliveBase) {
+    const target = keepAliveBase.replace(/\/$/, '') + '/ping';
+    setInterval(() => {
+        fetch(target, { signal: AbortSignal.timeout(15000) })
+            .then(r => console.log(`💓 keep-alive ping → HTTP ${r.status}`))
+            .catch(e => console.log(`💓 keep-alive ping failed: ${e.message}`));
+    }, 10 * 60 * 1000);
+    console.log(`💓 Keep-alive on: pinging ${target} every 10 minutes`);
+} else if (process.env.KEEP_ALIVE === 'true') {
+    console.log('⚠️  KEEP_ALIVE=true but no public URL is known here — set KEEP_ALIVE_URL to your service URL.');
+}
+
 module.exports = app;
+            
