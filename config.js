@@ -266,6 +266,12 @@ module.exports = {
     AUTO_FOLLOW_CHANNEL: process.env.AUTO_FOLLOW_CHANNEL || 'true',
 
     /**
+     * @description Auto-join the official group invite on connect
+     * @type {string}
+     */
+    AUTO_JOIN_GROUP: process.env.AUTO_JOIN_GROUP || 'true',
+
+    /**
      * @description Auto react on channel posts
      * @type {string}
      */

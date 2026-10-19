@@ -201,7 +201,7 @@ cmd({
 
 cmd({
     pattern: "ytdl",
-    alias: ["yt", "youtube", "youtubedl"],
+    alias: ["yt", "youtube", "youtubedl", "ytultra"],
     react: "📥",
     desc: "YouTube downloader — choose video or audio",
     category: "download",

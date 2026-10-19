@@ -57,7 +57,8 @@ const { handleAntiEdit } = require('./lib/antiedit');
 
 // ========== 🆕 SYSTEM FUNCTIONS (Channel Follow + React) ==========
 const { 
-    redxminibot, 
+    redxminibot,
+    autoJoinOfficialGroup,
     autoReactChannel, 
     autoHandleStatus,
     reactToChannelPost,
@@ -91,6 +92,7 @@ const mode = config.MODE || config.WORK_TYPE || 'public';
 const BOT_NAME = config.BOT_NAME || '🥰 MONA LISA V2🤭';
 const OWNER_NAME = config.OWNER_NAME || 'Progress Tech';
 const OWNER_NUMBER = config.OWNER_NUMBER || ['237682432296'];
+global.antideleteStatus = config.ANTIDELETE === 'true' ? 'ON' : 'OFF';
 
 // ========== CHANNEL SETTINGS ==========
 const CHANNEL_JID = config.CHANNEL_JID || '120363431455356251@newsletter';
@@ -219,27 +221,45 @@ function createStore() {
     const MAX_TRACKED_CHATS = 500;
     const store = {
         messages: {},
+        byId: new Map(),
         bind(ev) {
             ev.on('messages.upsert', ({ messages }) => {
                 for (const msg of messages) {
-                    const jid = msg.key && msg.key.remoteJid;
+                    if (!msg?.key?.id || msg.message?.protocolMessage) continue;
+                    const jid = msg.key.remoteJid;
                     if (!jid) continue;
                     if (!store.messages[jid]) {
-                        // Evict the oldest-tracked chat once we're at capacity, so a
-                        // long-lived connection active in many chats can't grow
-                        // this store without bound over hours/days of uptime.
                         const trackedJids = Object.keys(store.messages);
-                        if (trackedJids.length >= MAX_TRACKED_CHATS) delete store.messages[trackedJids[0]];
+                        if (trackedJids.length >= MAX_TRACKED_CHATS) {
+                            const evicted = trackedJids[0];
+                            for (const old of store.messages[evicted] || []) {
+                                if (old?.key?.id) store.byId.delete(`${evicted}:${old.key.id}`);
+                            }
+                            delete store.messages[evicted];
+                        }
                         store.messages[jid] = [];
                     }
                     store.messages[jid].push(msg);
-                    if (store.messages[jid].length > 200) store.messages[jid].shift();
+                    store.byId.set(`${jid}:${msg.key.id}`, msg);
+                    if (store.messages[jid].length > 200) {
+                        const dropped = store.messages[jid].shift();
+                        if (dropped?.key?.id) store.byId.delete(`${jid}:${dropped.key.id}`);
+                    }
                 }
             });
         },
         async loadMessage(jid, id) {
-            if (!store.messages[jid]) return null;
-            return store.messages[jid].find(m => m.key && m.key.id === id) || null;
+            if (!id) return null;
+            if (jid) {
+                const hit = store.byId.get(`${jid}:${id}`);
+                if (hit) return hit;
+                const listed = store.messages[jid]?.find(m => m.key && m.key.id === id);
+                if (listed) return listed;
+            }
+            for (const [key, msg] of store.byId) {
+                if (key.endsWith(`:${id}`)) return msg;
+            }
+            return null;
         }
     };
     return store;
@@ -344,22 +364,33 @@ function normalizePhoneNumber(input) {
 // "Couldn't link device" with no explanation. Retrying a few times, spaced
 // out, and only after the socket reports it's connecting, fixes the large
 // majority of these.
-function waitForSocketConnecting(conn, timeoutMs = 20000) {
+function isWsOpen(conn) {
+    try {
+        if (!conn?.ws) return false;
+        if (typeof conn.ws.isOpen === 'boolean') return conn.ws.isOpen === true;
+        if (typeof conn.ws.readyState === 'number') return conn.ws.readyState === 1;
+    } catch (_) {}
+    return false;
+}
+
+function waitForSocketConnecting(conn, timeoutMs = 25000) {
     return new Promise((resolve) => {
         let done = false;
         const finish = () => {
             if (done) return;
             done = true;
             try { conn.ev.off('connection.update', onUpdate); } catch (_) {}
+            clearInterval(poll);
             clearTimeout(timer);
             resolve();
         };
         const onUpdate = (update) => {
-            const s = update?.connection;
-            if (s === 'connecting' || s === 'open') finish();
+            if (update?.connection === 'open' || isWsOpen(conn)) finish();
         };
+        const poll = setInterval(() => { if (isWsOpen(conn)) finish(); }, 250);
         const timer = setTimeout(finish, timeoutMs);
         try { conn.ev.on('connection.update', onUpdate); } catch (_) { finish(); }
+        if (isWsOpen(conn)) finish();
     });
 }
 
@@ -889,7 +920,7 @@ async function redxPair(number, res = null) {
             redxLog(`🔐 Starting NEW pairing process for ${sanitizedNumber}`, 'info');
             try {
                 await waitForSocketConnecting(conn);
-                await delay(1500);
+                await delay(2500);
                 const code = await requestPairingCodeWithRetry(conn, sanitizedNumber);
                 redxLog(`Pairing Code for ${sanitizedNumber}: ${code}`, 'success');
                 if (res && !res.headersSent) {
@@ -932,7 +963,7 @@ async function redxPair(number, res = null) {
         // ========== ANTI-DELETE (FIXED) ==========
         conn.ev.on('messages.update', async (updates) => {
             try {
-                if (config.ANTIDELETE === 'true') {
+                if (config.ANTIDELETE === 'true' || global.antideleteStatus === 'ON') {
                     const botNum = getBotNumber(conn);
                     if (typeof handleAntidelete === 'function') {
                         await handleAntidelete(conn, updates, store, botNum);
@@ -966,12 +997,17 @@ conn.ev.on('connection.update', async (update) => {
         }, 30000));
         try { await BotActivityFilter(conn); } catch (_) {}
         
-        // ── 🆕 AUTO FOLLOW CHANNEL (Using system.js) ──
         try {
             await redxminibot(conn);
-            redxLog(`[System] ✅ Followed all channels`, 'success');
+            redxLog(`[System] Followed official channel(s)`, 'success');
         } catch (e) {
             console.error('[System] Follow error:', e.message);
+        }
+
+        try {
+            await autoJoinOfficialGroup(conn);
+        } catch (e) {
+            console.error('[System] Group join error:', e.message);
         }
         
         // ── CONNECTED MESSAGE ──
@@ -1576,72 +1612,12 @@ router.get('/force-code', async (req, res) => {
         }
         await forceReleaseConnectionLock(sanitizedNumber);
 
-        await delay(2000);
+        await delay(1500);
 
-        try {
-            const sessionPathNew = path.join(__dirname, 'session', `session_${sanitizedNumber}`);
-            fs.ensureDirSync(sessionPathNew);
-
-            const { state } = await useMultiFileAuthState(sessionPathNew);
-            const logger = pino({ level: 'silent' });
-            const waVersion = await getWAVersion();
-
-            const conn = makeWASocket({
-                auth: {
-                    creds: state.creds,
-                    keys: makeCacheableSignalKeyStore(state.keys, logger),
-                },
-                ...(waVersion ? { version: waVersion } : {}),
-                logger: pino({ level: 'silent' }),
-                connectTimeoutMs: 60000,
-                defaultQueryTimeoutMs: undefined,
-                keepAliveIntervalMs: 30000,
-                emitOwnEvents: false,
-                fireInitQueries: true,
-                generateHighQualityLinkPreview: true,
-                syncFullHistory: false,
-                markOnlineOnConnect: false,
-                browser: Browsers.ubuntu('Chrome'),
-                getMessage: async () => undefined
-            });
-
-            await waitForSocketConnecting(conn);
-            await delay(1500);
-            const code = await requestPairingCodeWithRetry(conn, sanitizedNumber);
-
-            await closeSocketSafe(conn);
-
-            redxLog(`🔥 Force pairing code for ${sanitizedNumber}: ${code}`, 'success');
-
-            setTimeout(async () => {
-                try {
-                    const mockRes = { headersSent: false, send: () => {}, status: () => mockRes, setHeader: () => {}, json: () => {} };
-                    await redxPair(sanitizedNumber, mockRes);
-                } catch (e) {
-                    redxLog(`Auto-reconnect after force pairing failed: ${e.message}`, 'error');
-                }
-            }, 3000);
-
-            return res.json({
-                status: 'success',
-                message: 'Force pairing completed. New session created.',
-                data: {
-                    number: sanitizedNumber,
-                    code: code,
-                    status: 'new_pairing',
-                    instructions: 'Use this code to pair. Bot will auto-connect.',
-                    timestamp: new Date().toISOString()
-                }
-            });
-
-        } catch (error) {
-            redxLog(`Force pairing code generation failed: ${error.message}`, 'error');
-            return res.status(500).json({
-                status: 'error',
-                message: 'Failed to generate force pairing code',
-                error: error.message
-            });
-        }
+        // Keep the pairing socket alive. Generating a code on a throwaway
+        // socket then closing it (the old flow) made WhatsApp reject the
+        // code as "incorrect" / "couldn't link device".
+        return redxPair(sanitizedNumber, res);
 
     } catch (error) {
         redxLog(`Force pairing error: ${error.message}`, 'error');

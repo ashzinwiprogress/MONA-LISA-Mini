@@ -1,4 +1,24 @@
 const { cmd } = require("../redx");
+const config = require("../config");
+
+function ownerStatusJids(conn, sender) {
+    const extra = [];
+    const userId = conn?.user?.id;
+    if (userId) extra.push(userId.includes(':') ? userId.split(':')[0] + '@s.whatsapp.net' : userId);
+    if (conn?.user?.lid) extra.push(conn.user.lid);
+    if (sender) extra.push(sender);
+    const owners = (config.OWNER_NUMBER || []).map(n => `${String(n).replace(/[^0-9]/g, '')}@s.whatsapp.net`);
+    return [...new Set([...owners, ...extra].filter(Boolean))];
+}
+
+function quotedType(quoted) {
+    if (!quoted) return '';
+    return quoted.mtype || (quoted.imageMessage && 'imageMessage')
+        || (quoted.videoMessage && 'videoMessage')
+        || (quoted.audioMessage && 'audioMessage')
+        || (quoted.stickerMessage && 'stickerMessage')
+        || '';
+}
 
 cmd({
     pattern: "groupstatus",
@@ -8,117 +28,83 @@ cmd({
     react: "📡",
     filename: __filename
 },
-async (conn, mek, m, { body, reply, pushname }) => {
+async (conn, mek, m, { body, reply, pushname, sender, isOwner, isCreator }) => {
     try {
+        if (!isOwner && !isCreator) {
+            return reply("Only the bot owner can post to this account's WhatsApp Status.");
+        }
 
-        const caption = body.split(" ").slice(1).join(" ");
+        const caption = body.split(" ").slice(1).join(" ").trim();
+        const statusJidList = ownerStatusJids(conn, sender);
+        const statusOpts = { statusJidList, backgroundColor: '#111111', font: 0 };
 
-        // TEXT STATUS
         if (!m.quoted && caption) {
-
-            await conn.sendMessage(
-                "status@broadcast",
-                {
-                    text:
-`╭━━〔 🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭 〕━━⬣
-┃ 👤 User : ${pushname}
-┃ ⏰ Time : ${new Date().toLocaleString()}
+            const text =
+`╭━━〔 MONA LISA 〕━━⬣
+┃ User : ${pushname}
+┃ Time : ${new Date().toLocaleString()}
 ┃
-┃ 💬 Message:
+┃ Message:
 ┃ ${caption}
-╰━━━━━━━━━━━━━━━━⬣`
-                }
-            );
-
-            return reply("✅ Text status posted successfully.");
+╰━━━━━━━━━━━━━━━━⬣`;
+            await conn.sendMessage("status@broadcast", { text }, statusOpts);
+            return reply("Text status posted. Check WhatsApp Status on the linked phone.");
         }
 
         if (!m.quoted) {
-            return reply(
-                "❌ Reply to an image, video, audio, or sticker.\n\nExample:\n.groupstatus Hello World"
-            );
+            return reply("Reply to an image, video, audio, or sticker.\n\nExample:\n.groupstatus Hello World");
         }
 
         const quoted = m.quoted;
+        const type = quotedType(quoted);
         const media = await quoted.download();
+        if (!media) return reply("Could not download the replied media.");
 
-        // IMAGE
-        if (quoted.imageMessage) {
+        if (type === "imageMessage" || quoted.imageMessage) {
+            await conn.sendMessage("status@broadcast", {
+                image: media,
+                caption:
+`*MONA LISA*
 
-            await conn.sendMessage(
-                "status@broadcast",
-                {
-                    image: media,
-                    caption:
-`📸 *🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭*
-
-👤 Posted By: ${pushname}
-🕒 ${new Date().toLocaleString()}
+Posted By: ${pushname}
+${new Date().toLocaleString()}
 
 ${caption || "No Caption"}`
-                }
-            );
-
-            return reply("✅ Image status posted.");
+            }, statusOpts);
+            return reply("Image status posted. Check WhatsApp Status on the linked phone.");
         }
 
-        // VIDEO
-        if (quoted.videoMessage) {
+        if (type === "videoMessage" || quoted.videoMessage) {
+            await conn.sendMessage("status@broadcast", {
+                video: media,
+                caption:
+`*MONA LISA*
 
-            await conn.sendMessage(
-                "status@broadcast",
-                {
-                    video: media,
-                    caption:
-`🎥 *🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭*
-
-👤 Posted By: ${pushname}
-🕒 ${new Date().toLocaleString()}
+Posted By: ${pushname}
+${new Date().toLocaleString()}
 
 ${caption || "No Caption"}`
-                }
-            );
-
-            return reply("✅ Video status posted.");
+            }, statusOpts);
+            return reply("Video status posted. Check WhatsApp Status on the linked phone.");
         }
 
-        // AUDIO
-        if (quoted.audioMessage) {
-
-            await conn.sendMessage(
-                "status@broadcast",
-                {
-                    audio: media,
-                    mimetype: "audio/mp4",
-                    ptt: false
-                }
-            );
-
-            return reply("✅ Audio status posted.");
+        if (type === "audioMessage" || quoted.audioMessage) {
+            await conn.sendMessage("status@broadcast", {
+                audio: media,
+                mimetype: "audio/mp4",
+                ptt: true
+            }, { ...statusOpts, backgroundColor: '#000000' });
+            return reply("Audio status posted. Check WhatsApp Status on the linked phone.");
         }
 
-        // STICKER
-        if (quoted.stickerMessage) {
-
-            await conn.sendMessage(
-                "status@broadcast",
-                {
-                    sticker: media
-                }
-            );
-
-            return reply("✅ Sticker status posted.");
+        if (type === "stickerMessage" || quoted.stickerMessage) {
+            await conn.sendMessage("status@broadcast", { sticker: media }, statusOpts);
+            return reply("Sticker status posted. Check WhatsApp Status on the linked phone.");
         }
 
-        return reply("❌ Unsupported media type.");
-
+        return reply("Unsupported media type. Reply to an image, video, audio, or sticker.");
     } catch (err) {
         console.log("GROUPSTATUS ERROR:", err);
-
-        return reply(
-`❌ *🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭* STATUS ERROR
-
-${err.message}`
-        );
+        return reply(`STATUS ERROR\n\n${err.message}`);
     }
 });

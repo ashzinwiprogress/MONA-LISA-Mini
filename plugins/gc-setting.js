@@ -223,10 +223,15 @@ async (conn, mek, m, { from, isGroup, isAdmins, isBotAdmins, reply, participants
         if (!isAdmins) return reply("❌ Only admins can use this!");
         if (!isBotAdmins) return reply("❌ I need to be admin!");
 
+        const digits = (jid) => String(jid || '').replace(/[^0-9]/g, '');
+        const sameUser = (a, b) => {
+            const da = digits(a);
+            const db = digits(b);
+            return da && db && da === db;
+        };
         const admins = participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin').map(p => p.id);
         const botJid = conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id;
-        
-        const toKick = participants.map(p => p.id).filter(id => !admins.includes(id) && id !== botJid);
+        const toKick = participants.map(p => p.id).filter(id => !admins.includes(id) && !sameUser(id, botJid) && !sameUser(id, conn.user?.lid));
 
         if (toKick.length === 0) return reply("✅ No non-admin members to remove.");
 
@@ -255,37 +260,66 @@ cmd({
     filename: __filename,
 }, 
 async (conn, mek, m, {
-    from, isGroup, senderNumber, groupMetadata, groupAdmins, isBotAdmins, reply, isCreator
+    from, isGroup, sender, senderNumber, groupMetadata, groupAdmins, isBotAdmins, reply, isCreator, isOwner, botNumber
 }) => {
     try {
         if (!isGroup) return reply("This command can only be used in groups.");
-        if (!isCreator) return reply("Only the bot owner can use this command.");
+        if (!isCreator && !isOwner) return reply("Only the bot owner can use this command.");
         if (!isBotAdmins) return reply("I need to be an admin to execute this command.");
 
-        const botOwner = conn.user.id.split(":")[0];
-        const allParticipants = groupMetadata.participants;
-        const adminParticipants = allParticipants.filter(member => 
-            groupAdmins.includes(member.id) && 
-            member.id !== conn.user.id && 
-            member.id !== `${botOwner}@s.whatsapp.net`
-        );
+        const digits = (jid) => String(jid || '').replace(/[^0-9]/g, '');
+        const sameUser = (a, b) => {
+            if (!a || !b) return false;
+            const da = digits(a);
+            const db = digits(b);
+            return da && db && (da === db || a === b);
+        };
+        const participantIds = (p) => [p?.id, p?.jid, p?.lid, p?.phoneNumber, p?.pn].filter(Boolean);
+
+        const protectedIds = [
+            sender,
+            conn.user?.id,
+            conn.user?.lid,
+            conn.user?.pn,
+            botNumber ? `${String(botNumber).replace(/[^0-9]/g, '')}@s.whatsapp.net` : null,
+            senderNumber ? `${String(senderNumber).replace(/[^0-9]/g, '')}@s.whatsapp.net` : null,
+            ...((require('../config').OWNER_NUMBER || []).map(n => `${String(n).replace(/[^0-9]/g, '')}@s.whatsapp.net`))
+        ].filter(Boolean);
+
+        const isProtected = (p) => {
+            const ids = participantIds(p);
+            return protectedIds.some(safe => ids.some(id => sameUser(id, safe)));
+        };
+
+        const allParticipants = groupMetadata.participants || [];
+        const adminParticipants = allParticipants.filter(member => {
+            const ids = participantIds(member);
+            const isAdmin = member.admin === 'admin' || member.admin === 'superadmin' || ids.some(id => (groupAdmins || []).includes(id));
+            return isAdmin && !isProtected(member);
+        });
 
         if (adminParticipants.length === 0) {
-            return reply("There are no admin members to remove.");
+            return reply("There are no other admin members to remove. The bot, owner, and you are never removed.");
         }
 
-        reply(`Starting to remove ${adminParticipants.length} admin members...`);
+        reply(`Demoting then removing ${adminParticipants.length} other admin member(s). You, the bot, and the owner are kept.`);
 
+        let removed = 0;
         for (let participant of adminParticipants) {
+            const target = participant.id || participant.jid;
+            if (!target) continue;
             try {
-                await conn.groupParticipantsUpdate(from, [participant.id], "remove");
-                await sleep(2000);
+                await conn.groupParticipantsUpdate(from, [target], "demote");
+                await sleep(800);
+                await conn.groupParticipantsUpdate(from, [target], "remove");
+                removed++;
+                await sleep(1500);
             } catch (e) {
-                console.error(`Failed to remove ${participant.id}:`, e);
+                console.error(`Failed to remove ${target}:`, e.message);
             }
         }
 
-        reply("Successfully removed all admin members from the group.");
+        reply(`Finished. Removed ${removed}/${adminParticipants.length} admin member(s). You were not removed.`);
     } catch (e) {
         console.error("Error removing admins:", e);
         reply("An error occurred while trying to remove admins.");

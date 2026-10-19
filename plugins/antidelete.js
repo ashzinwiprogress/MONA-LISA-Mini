@@ -1,6 +1,7 @@
 // plugins/antidelete.js
 const { cmd } = require("../redx");
 const { updateUserConfigInMongoDB, getUserConfigFromMongoDB } = require('../lib/database');
+const config = require('../config');
 
 cmd({
     pattern: "antidelete",
@@ -14,7 +15,8 @@ cmd({
     reply,
     args,
     sender,
-    isCreator
+    isCreator,
+    config
 }) => {
     try {
         if (!isCreator) return reply("❌ Only bot owner can use this command.");
@@ -30,14 +32,14 @@ cmd({
         
         const status = action === 'on' || action === 'enable' ? 'true' : 'false';
         
-        // Update in database for current user
         const userNumber = sender.split('@')[0];
         await updateUserConfigInMongoDB(userNumber, { ANTIDELETE: status });
         
         global.antideleteStatus = status === 'true' ? 'ON' : 'OFF';
+        if (config) config.ANTIDELETE = status;
         
-        reply(`✅ Antidelete ${status === 'true' ? 'enabled' : 'disabled'} successfully!\n\n` +
-              `📩 Deleted messages will be sent to owner's inbox only.`);
+        reply(`Antidelete ${status === 'true' ? 'enabled' : 'disabled'} successfully.\n\n` +
+              `Deleted messages will be sent to the owner's inbox.`);
         
     } catch (error) {
         console.error("Antidelete command error:", error);
