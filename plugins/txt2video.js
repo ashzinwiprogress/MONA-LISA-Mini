@@ -100,71 +100,42 @@ cmd({
     await conn.sendMessage(from, { react: { text: "🎬", key: mek.key } });
 
     let prompt = rawQ;
-    let aspectRatio = "16:9";
-    let voiceover = false;
+    let aspectRatio = "auto";
+    let sound = true;
 
-    // Detect aspect ratio
-    const arMatch = rawQ.match(/(16:9|9:16|1:1|4:3|21:9)/i);
+    const arMatch = rawQ.match(/(16:9|9:16|1:1|4:3|21:9|auto)/i);
     if (arMatch) {
         aspectRatio = arMatch[1];
-        prompt = rawQ.replace(arMatch[1], '').trim();
+        prompt = rawQ.replace(arMatch[0], '').trim();
     }
-
-    // Detect voiceover request
-    if (rawQ.toLowerCase().includes('voiceover') || rawQ.toLowerCase().includes('with voice') || rawQ.toLowerCase().includes('voice over')) {
-        voiceover = true;
-        // keep prompt but we flag it
+    if (/no\s*sound|silent/i.test(rawQ)) {
+        sound = false;
+        prompt = prompt.replace(/no\s*sound|silent/ig, '').trim();
     }
+    if (!prompt) prompt = rawQ.replace(arMatch ? arMatch[0] : '', '').trim() || rawQ;
 
-    if (!prompt) prompt = rawQ;
-
-    reply(`*🎬 Generating AI Video...*\n*Prompt:* ${prompt.slice(0,120)}\n*Ratio:* ${aspectRatio}\n*Voiceover:* ${voiceover? 'Yes' : 'No'}\n\n_Wait 30-90 sec... Device ID auto-rotates on limit_\n\n_${BRAND}_`);
+    reply(`Generating ~10s video with ${sound ? 'sound' : 'no sound'}...\nPrompt: ${prompt.slice(0,120)}\nRatio: ${aspectRatio}\n\nPowered by Progress Tech`);
 
     let videoUrl = null;
-
-    // POST first
     try {
-        const { data } = await axios.post(API, {
-            prompt: prompt,
-            text: prompt,
-            query: prompt,
-            aspect_ratio: aspectRatio,
-            aspectRatio: aspectRatio,
-            ratio: aspectRatio,
-            voiceover: voiceover,
-            voice_over: voiceover,
-            with_voiceover: voiceover,
-            device_id: `device_${Date.now()}`
-        }, { timeout: 180000, headers: { 'Content-Type': 'application/json' } });
-
-        videoUrl = data.data?.url || data.data?.video_url || data.data?.videoUrl || data.url || data.video_url || data.data?.link || data.link || data.data?.result || data.result;
-        if (!videoUrl && typeof data.data === 'string' && data.data.startsWith('http')) videoUrl = data.data;
+        const { data } = await axios.get(API, {
+            params: { action: 'generate', prompt, ratio: aspectRatio, sound: String(sound) },
+            timeout: 180000,
+            headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' }
+        });
+        if (data && data.success === false) throw new Error(data.message || data.error || 'Txt2video failed');
+        const d = data.data || data;
+        videoUrl = d.videoUrl || d.url || d.video || data.videoUrl;
     } catch (e) {
-        console.log('POST failed, trying GET', e.response?.data || e.message);
+        console.log('Txt2video GET failed', e.response?.data || e.message);
+        throw e;
     }
 
-    // GET fallback
-    if (!videoUrl) {
-        const urls = [
-            `${API}?prompt=${encodeURIComponent(prompt)}&aspect_ratio=${encodeURIComponent(aspectRatio)}&voiceover=${voiceover}`,
-            `${API}?text=${encodeURIComponent(prompt)}&ratio=${aspectRatio}&voiceover=${voiceover}`,
-            `${API}?prompt=${encodeURIComponent(prompt)}&aspectRatio=${aspectRatio}&voice_over=${voiceover}`
-        ];
-        for (const u of urls) {
-            try {
-                const { data } = await axios.get(u, { timeout: 180000 });
-                videoUrl = data.data?.url || data.data?.video_url || data.url || data.video_url || data.data?.result;
-                if (!videoUrl && typeof data.data === 'string' && data.data.startsWith('http')) videoUrl = data.data;
-                if (videoUrl) break;
-            } catch {}
-        }
-    }
-
-    if (!videoUrl) throw new Error('No video URL returned from T2V API');
+    if (!videoUrl) throw new Error('No video URL returned from Txt2video');
 
     await conn.sendMessage(from, {
         video: { url: videoUrl },
-        caption: `*✅ Video Generated*\n*Prompt:* ${prompt}\n*Ratio:* ${aspectRatio}\n*Voiceover:* ${voiceover? 'Yes' : 'No'}\n\n*${BRAND}*\n${CHANNEL_LINK}`,
+        caption: `*Txt2Video (~10s, sound)*\nPrompt: ${prompt}\nRatio: ${aspectRatio}\n\nPowered by Progress Tech\n${CHANNEL_LINK}`,
         contextInfo: ctx
     }, { quoted: mek });
 

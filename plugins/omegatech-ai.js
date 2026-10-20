@@ -72,7 +72,7 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!q) return reply(`*🎬 Omegatech Txt2Video*\n\nUsage: .omegavideo a cow in the city\nOptional ratio: .omegavideo a cow in the city --16:9\n\n_Generates a ~10s video with sound._`);
+        if (!q) return reply(`*Txt2Video (~10s with sound)*\n\nUsage: .omegavideo a cow in the city\nRatio: .omegavideo a cow in the city --16:9\n\nPowered by Progress Tech`);
 
         let prompt = q;
         let ratio = 'auto';
@@ -88,21 +88,19 @@ cmd({
         const videoUrl = d.videoUrl || d.url || d.video;
         if (!videoUrl) throw new Error('No video URL returned: ' + JSON.stringify(res).slice(0, 300));
 
-        await sendVideoBuffer(conn, from, mek, videoUrl, `*✅ Omegatech Video*\n*Prompt:* ${prompt}\n*Ratio:* ${ratio}\n\n*${BRAND}*\n${CHANNEL_LINK}`);
+        await sendVideoBuffer(conn, from, mek, videoUrl, `*Txt2Video (~10s, sound)*\nPrompt: ${prompt}\nRatio: ${ratio}\n\n*${BRAND}*\n${CHANNEL_LINK}`);
     } catch (e) {
         console.error('[omegavideo]', e.message);
         reply(`*❌ Omegatech Txt2Video failed*\n${e.message}`);
     }
 });
 
-// ── Wan-fast (image-to-video, ~10s) ──
-// The Omegatech Wan-fast endpoint only exposes `submit` + `status`, and
-// `submit` requires an image — it is an image-to-video model, not text-only.
+// Wan-fast: ~10s image-to-video (reply image) or text-to-video (prompt only).
 cmd({
     pattern: "wan",
     alias: ["wanfast", "wan-video", "omegawan"],
     react: "🎬",
-    desc: "Omegatech Wan 2.2 fast image-to-video (reply to an image)",
+    desc: "Wan 2.2 fast ~10s video (text or reply image)",
     category: "video",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
@@ -116,48 +114,57 @@ cmd({
         const rm = prompt.match(/(?:--)?(16:9|9:16|1:1)\b/i);
         if (rm) { ratio = rm[1]; prompt = prompt.replace(rm[0], '').trim(); }
 
+        if (!taskResume && !prompt && !getQuotedImage(m)) {
+            return reply(`*Wan-Fast (~10s)*\n\nText to video:\n.wan a cow walking in the city\n\nImage to video: reply to an image\n.wan animate this --9:16\n\nResume: .wan --task <taskId>\n\nPowered by Progress Tech`);
+        }
+
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
         let taskId = taskResume;
         if (!taskId) {
             const quoted = getQuotedImage(m);
-            if (!quoted) {
-                return reply(`*🎬 Omegatech Wan-Fast (image → video)*\n\nReply to an image with:\n.wan <motion prompt>\n\nOptional ratio: .wan a cow walking --9:16\nResume a task: .wan --task <taskId>`);
+            let imageUrl = null;
+            if (quoted) {
+                await reply('Uploading image for Wan-Fast...');
+                const buf = await quoted.download();
+                if (!buf) throw new Error('Could not download the replied image.');
+                imageUrl = await uploadToCatbox(buf, 'wan.jpg');
             }
 
-            await reply('*📤 Uploading your image...*');
-            const buf = await quoted.download();
-            if (!buf) throw new Error('Could not download the replied image.');
-            const imageUrl = await uploadToCatbox(buf, 'wan.jpg');
+            const motion = prompt || (imageUrl ? 'animate this image naturally' : '');
+            if (!motion) return reply('Give a prompt, or reply to an image.');
+            await reply(`Rendering Wan-Fast (~10s)...\nPrompt: ${motion}\nRatio: ${ratio}\nMode: ${imageUrl ? 'image-to-video' : 'text-to-video'}`);
 
-            await reply(`*🎬 Rendering Wan-Fast...*\n*Prompt:* ${prompt || 'animate this image'}\n*Ratio:* ${ratio}\n\n_Wait ~1-2 min..._`);
-            const gen = await apiGet(`/api/ai/Wan-fast?action=submit&image=${encodeURIComponent(imageUrl)}&prompt=${encodeURIComponent(prompt || 'animate this image naturally')}&aspectRatio=${encodeURIComponent(ratio)}`, 120000);
+            let path = `/api/ai/Wan-fast?action=submit&prompt=${encodeURIComponent(motion)}&aspectRatio=${encodeURIComponent(ratio)}`;
+            if (imageUrl) path += `&image=${encodeURIComponent(imageUrl)}`;
+            const gen = await apiGet(path, 120000);
             const gd = gen.data || gen;
             taskId = gd.taskId || gd.task_id || gd.id || gen.taskId;
             const direct = gd.videoUrl || gd.url;
             if (direct) {
-                return sendVideoBuffer(conn, from, mek, direct, `*✅ Wan-Fast Video*\n*Prompt:* ${prompt}\n*Ratio:* ${ratio}\n\n*${BRAND}*\n${CHANNEL_LINK}`);
+                return sendVideoBuffer(conn, from, mek, direct, `*Wan-Fast (~10s)*\nPrompt: ${motion}\nRatio: ${ratio}\n\n*${BRAND}*\n${CHANNEL_LINK}`);
             }
             if (!taskId) throw new Error('No taskId returned: ' + JSON.stringify(gen).slice(0, 300));
         }
 
-        // Poll status
         let videoUrl = null;
         for (let i = 0; i < 40; i++) {
             const st = await apiGet(`/api/ai/Wan-fast?action=status&aspectRatio=${encodeURIComponent(ratio)}&taskId=${encodeURIComponent(taskId)}`, 60000);
             const sd = st.data || st;
             videoUrl = sd.videoUrl || sd.url;
             const status = (sd.status || '').toLowerCase();
-            if (videoUrl) break;
+            if (videoUrl || status === 'success' || status === 'succeeded' || status === 'completed' || status === 'done') {
+                if (videoUrl) break;
+            }
             if (status === 'failed' || status === 'error') throw new Error(sd.message || 'Generation failed');
             await sleep(5000);
         }
         if (!videoUrl) throw new Error('Timed out waiting for Wan-Fast video.');
 
-        await sendVideoBuffer(conn, from, mek, videoUrl, `*✅ Wan-Fast Video*\n*Prompt:* ${prompt || '[resumed task]'}\n*Ratio:* ${ratio}\n*Task:* ${taskId}\n\n*${BRAND}*\n${CHANNEL_LINK}`);
+        await sendVideoBuffer(conn, from, mek, videoUrl, `*Wan-Fast (~10s)*\nPrompt: ${prompt || '[resumed task]'}\nRatio: ${ratio}\nTask: ${taskId}\n\n*${BRAND}*\n${CHANNEL_LINK}`);
     } catch (e) {
         console.error('[wan]', e.message);
-        reply(`*❌ Wan-Fast failed*\n${e.message}`);
+        reply(`Wan-Fast failed: ${e.message}`);
     }
 });
 
