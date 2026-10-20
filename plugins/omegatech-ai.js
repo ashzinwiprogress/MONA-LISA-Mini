@@ -180,7 +180,7 @@ cmd({
         const imageUrl = d.image || d.url || d.imageUrl;
         if (!imageUrl) throw new Error('No image URL returned: ' + JSON.stringify(res).slice(0, 300));
 
-        await sendImageBuffer(conn, from, mek, imageUrl, `*✅ Nano-Banana*\n*Prompt:* ${q}\n\n*${BRAND}*\n${CHANNEL_LINK}`);
+        await sendImageBuffer(conn, from, mek, imageUrl, `*Nano-Banana*\nPrompt: ${q}\nJob: ${d.jobId || 'ok'}\n\n*${BRAND}*\n${CHANNEL_LINK}`);
     } catch (e) {
         console.error('[omeganano]', e.message);
         reply(`*❌ Nano-Banana failed*\n${e.message}`);

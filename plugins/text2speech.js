@@ -28,24 +28,23 @@ cmd({
     if (!text) return reply(`*Enter text bro*\n${prefix}tts2 woman1 hello`);
 
     await conn.sendMessage(from, {
-        text: `*🎙️ Generating speech...*\nVoice: *${voice}*\nText: ${text.slice(0,50)}`
+        text: `Generating speech...\nVoice: ${voice}\nText: ${text.slice(0,50)}`
     }, { quoted: mek });
 
     let audioUrl = null;
+    const pickAudio = (data) => data?.audio || data?.audioUrl || data?.audio_url || data?.url || data?.result || data?.data?.audio || data?.data?.url;
 
-    // Try GET
     try {
-        const { data } = await axios.get(API, { params: { text, voice }, timeout: 30000 });
-        console.log('TTS2:', JSON.stringify(data).slice(0,400));
-        audioUrl = data.audioUrl || data.audio_url || data.url || data.result || data.data?.url;
+        const { data } = await axios.get(API, { params: { text, voice, language: 'English' }, timeout: 45000 });
+        audioUrl = pickAudio(data);
         if (typeof data === 'string' && data.startsWith('http')) audioUrl = data;
-    } catch(e){ console.log('TTS2 GET1 fail', e.message); }
+    } catch (e) { console.log('TTS2 GET1 fail', e.message); }
 
     if (!audioUrl) {
         try {
-            const { data } = await axios.get(API2, { params: { text, voice, language: 'en' }, timeout: 30000 });
-            audioUrl = data.audioUrl || data.audio_url || data.url;
-        } catch(e){}
+            const { data } = await axios.get(API2, { params: { text, voice, language: 'en' }, timeout: 45000 });
+            audioUrl = pickAudio(data);
+        } catch (e) {}
     }
 
     if (!audioUrl) throw new Error('No audio URL returned');
@@ -65,16 +64,12 @@ cmd({
     await conn.sendMessage(from, {
         audio: buffer,
         mimetype: 'audio/mpeg',
-        ptt: false, // <--- FIXED, was true before
+        ptt: false,
         fileName: 'voice.mp3'
     }, { quoted: mek });
 
-    // Then also send as voice note if you want, but convert mimetype
-    // If you MUST send ptt, use this second message with ogg
-    // await conn.sendMessage(from, { audio: buffer, mimetype: 'audio/mp3', ptt: true }, { quoted: mek });
-
   } catch (e) {
     console.error('TTS2 ERROR:', e.response?.data || e.message);
-    reply(`*❌ TTS Failed*\n${e.message}\nTry short text`);
+    reply(`TTS failed: ${e.message}\nTry shorter text.\nPowered by Progress Tech`);
   }
 });

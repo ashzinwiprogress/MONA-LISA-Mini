@@ -101,16 +101,24 @@ cmd({
     await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
     reply(`*🍌 Generating your image... Please wait ☺️*`);
 
-    const { data } = await axios.get(`https://api.omegatech.app/api/ai/nano-banana-pro?prompt=${encodeURIComponent(q)}`, { timeout: 60000 });
+    let imageUrl = null;
+    try {
+      const { data } = await axios.get(`https://api.omegatech.app/api/ai/notgept-Nano-banana?action=generate&prompt=${encodeURIComponent(q)}`, { timeout: 90000 });
+      imageUrl = data?.data?.image || data?.image || data?.data?.url;
+    } catch (_) {}
+    if (!imageUrl) {
+      const { data } = await axios.get(`https://api.omegatech.app/api/ai/nano-banana-pro?prompt=${encodeURIComponent(q)}`, { timeout: 60000 });
+      imageUrl = data?.image || data?.data?.image || data?.url;
+    }
 
-    if (data.image) {
-      const imgBuf = await axios.get(data.image, { responseType: 'arraybuffer' });
+    if (imageUrl) {
+      const imgBuf = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 60000 });
       await conn.sendMessage(from, {
         image: Buffer.from(imgBuf.data),
-        caption: `*🍌 NANO PRO GENERATION 👑*\n\n*📝 Prompt: ${q}*\n*👑 By: MONA LISA MINI BOT 👑*`
+        caption: `*Nano-Banana*\nPrompt: ${q}\n\nPowered by Progress Tech`
       }, { quoted: mek });
       await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-    } else reply(`*❌ No image generated.*`);
+    } else reply(`No image generated.`);
   } catch (e) {
     console.log("NANO ERROR:", e.response?.data || e.message);
     reply(`*❌ Error:*\n*${e.message}*`);
