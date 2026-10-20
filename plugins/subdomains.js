@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/tools/subdomain-finder';
+const API = 'https://api.omegatech.app/api/tools/subdomain-finder';
 
 cmd({
   pattern: "subdomain",

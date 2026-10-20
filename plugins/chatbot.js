@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/ai/Chatbot';
+const API = 'https://api.omegatech.app/api/ai/Chatbot';
 
 // Memory: { from: sessionId }
 global.claudeSessions = global.claudeSessions || {};

@@ -11,36 +11,39 @@ cmd({
   try {
     if (!q) return reply("*YOU WANT TO DOWNLOAD A FACEBOOK VIDEO 🤔 THEN COPY THE LINK OF THAT FACEBOOK VIDEO 🤗*\n*THEN WRITE LIKE THIS ☺️*\n\n*FB ❮FACEBOOK VIDEO LINK❯*\n\n*WHEN YOU WRITE LIKE THIS 😇 YOUR FACEBOOK VIDEO WILL BE DOWNLOADED 😃 AND SENT HERE 😍♥️*");
 
-    const apiUrl = `https://movanest.xyz/v2/fbdown?url=${encodeURIComponent(q)}`;
-    const res = await axios.get(apiUrl);
-    const data = res.data;
+    let videoUrl = null;
+    let duration = '';
+    let creator = 'Progress Tech';
 
-    // 🔎 API status check
-    if (data.status !== true) {
-      return reply("API ERROR 😢");
-    }
-
-    // 🔎 Results check
-    if (!Array.isArray(data.results) || data.results.length === 0) {
-      return reply("*FACEBOOK VIDEO NOT FOUND 🥺*");
-    }
-
-    const result = data.results[0];
-
-    // 🎥 Quality selection (according to API)
-    const videoUrl = result.hdQualityLink
-      ? result.hdQualityLink
-      : result.normalQualityLink;
+    try {
+      const apiUrl = `https://movanest.xyz/v2/fbdown?url=${encodeURIComponent(q)}`;
+      const res = await axios.get(apiUrl, { timeout: 30000 });
+      const data = res.data;
+      if (data.status === true && Array.isArray(data.results) && data.results.length) {
+        const result = data.results[0];
+        videoUrl = result.hdQualityLink || result.normalQualityLink;
+        duration = result.duration || '';
+        creator = data.creator || creator;
+      }
+    } catch (_) {}
 
     if (!videoUrl) {
-      return reply("*PLEASE PROVIDE ONLY THE FACEBOOK VIDEO LINK ☺️*");
+      try {
+        const { data } = await axios.get(
+          `https://api.omegatech.app/api/download/Facebook?action=download&url=${encodeURIComponent(q)}&quality=hd`,
+          { timeout: 45000, headers: { Accept: 'application/json' } }
+        );
+        const d = data.data || data;
+        videoUrl = d.hd || d.sd || d.url || d.video || d.downloadUrl || d.media;
+        duration = d.duration || duration;
+      } catch (_) {}
     }
 
-    // 📝 Caption from API data
-    const caption = `*👑 FB VIDEO 👑*
-*👑 TIME :❯ ${result.duration}*
-*👑 CREATER :❯ ${data.creator}*
-*👑 BY :❯ Progress Tech 👑*`;
+    if (!videoUrl) {
+      return reply("Facebook video not found. Send a public video link.");
+    }
+
+    const caption = `*FB VIDEO*\nTime: ${duration || 'N/A'}\nBy: ${creator}\nPowered by Progress Tech`;
 
     await conn.sendMessage(
       from,

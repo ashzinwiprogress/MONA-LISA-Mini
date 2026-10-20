@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/Maker/Ephoto';
+const API = 'https://api.omegatech.app/api/Maker/Ephoto';
 
 async function callAPI(params) {
   const { data } = await axios.get(API, { params, timeout: 60000 });

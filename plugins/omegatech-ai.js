@@ -11,7 +11,7 @@ const FormData = require('form-data');
 
 const BASE = 'https://api.omegatech.app';
 const BRAND = '🔹 Powered by Omegatech';
-const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb8rLZOCRs1j79bllH05';
+const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -46,7 +46,7 @@ async function sendImageBuffer(conn, from, mek, url, caption) {
 
 async function uploadToCatbox(buffer, filename = 'image.jpg') {
     const form = new FormData();
-    form.append('reqtype', 'fileToUpload');
+    form.append('reqtype', 'fileupload');
     form.append('fileToUpload', buffer, { filename });
     const { data } = await axios.post('https://catbox.moe/user/api.php', form, {
         headers: form.getHeaders(),

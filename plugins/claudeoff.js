@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const FormData = require('form-data');
 
-const API = 'https://api.dixonomega.tech/api/ai/Claude-Off';
+const API = 'https://api.omegatech.app/api/ai/Claude-Off';
 const SESSION_FILE = path.join(__dirname, '../data/claude-off-sessions.json');
 
 try {

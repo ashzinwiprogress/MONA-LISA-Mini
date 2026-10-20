@@ -1,8 +1,8 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/ai/text2speech-v3';
-const API2 = 'https://api.dixonomega.tech/api/ai/text2speech-v3';
+const API = 'https://api.omegatech.app/api/ai/text2speech-v3';
+const API2 = 'https://api.omegatech.app/api/ai/text2speech-v3';
 
 cmd({
   pattern: "tts2",

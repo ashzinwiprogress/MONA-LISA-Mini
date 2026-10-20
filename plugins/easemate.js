@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/ai/Easemate';
+const API = 'https://api.omegatech.app/api/ai/Easemate';
 
 cmd({
   pattern: "easemate",

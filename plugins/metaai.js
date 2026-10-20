@@ -14,7 +14,7 @@ cmd({
     if (!q) return reply(`*🤖 META AI BOT FINDER 👑*\n\n*Usage:*\n*${prefix}metaai <prompt>*\n*Example: ${prefix}metaai A cow in city*\n\n*${prefix}metaai anime - get anime bots*\n*${prefix}metaai list - get all categories*`);
 
     const prompt = q.trim();
-    const apiUrl = `https://omegatech-api.dixonomega.tech/api/ai/Meta?action=categories&prompt=${encodeURIComponent(prompt)}`;
+    const apiUrl = `https://api.omegatech.app/api/ai/Meta?action=categories&prompt=${encodeURIComponent(prompt)}`;
     
     reply(`*🔄 Searching bots for: ${prompt}...*`);
     

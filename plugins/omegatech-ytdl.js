@@ -15,7 +15,7 @@ const yts = require('yt-search');
 
 const API = 'https://api.omegatech.app/api/download/ytultra?action=download';
 const BRAND = '🔹 Powered by Omegatech • YouTube';
-const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb8rLZOCRs1j79bllH05';
+const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05';
 
 // per-chat cache of the fetched YouTube data (in-memory; resets on restart)
 const ytCache = new Map();
@@ -233,10 +233,29 @@ async function handleYT(conn, mek, m, { from, q, reply, prefix }, mode) {
             return downloadAndSend(conn, from, data, mode === 'audio' ? 'audio' : 'video', index, mek, reply);
         }
 
+        let url = null;
         const urlMatch = q.match(/https?:\/\/\S+/i);
-        if (!urlMatch) return reply('❌ Please provide a valid YouTube URL.');
-        const url = urlMatch[0];
-        if (!/youtube\.com|youtu\.be/i.test(url)) return reply('❌ Please provide a valid YouTube URL.');
+        if (urlMatch && /youtube\.com|youtu\.be/i.test(urlMatch[0])) {
+            url = urlMatch[0];
+        } else {
+            await conn.sendMessage(from, { react: { text: '🔍', key: mek.key } });
+            await reply(`Searching YouTube for: ${q}`);
+            try {
+                const { data } = await axios.get(
+                    `https://api.omegatech.app/api/download/ytultra?action=search&query=${encodeURIComponent(q)}`,
+                    { timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' } }
+                );
+                const results = data?.data?.results || data?.results || [];
+                if (results.length && (results[0].url || results[0].link || results[0].videoId)) {
+                    url = results[0].url || results[0].link || `https://youtu.be/${results[0].videoId}`;
+                }
+            } catch (_) {}
+            if (!url) {
+                const search = await yts(String(q));
+                if (search && Array.isArray(search.videos) && search.videos.length) url = search.videos[0].url;
+            }
+            if (!url) return reply('No YouTube results for that query.');
+        }
 
         await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
         await reply('⏳ Fetching YouTube data...');

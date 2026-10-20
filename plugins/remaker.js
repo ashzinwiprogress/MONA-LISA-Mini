@@ -2,14 +2,14 @@ const { cmd } = require('../redx');
 const axios = require('axios');
 const FormData = require('form-data');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/ai/remaker';
+const API = 'https://api.omegatech.app/api/ai/remaker';
 const CATBOX = 'https://catbox.moe/user/api.php';
 
 global.remakerStore = global.remakerStore || {};
 
 async function uploadCatbox(buffer) {
   const form = new FormData();
-  form.append('reqtype', 'fileToUpload');
+  form.append('reqtype', 'fileupload');
   form.append('fileToUpload', buffer, { filename: `face_${Date.now()}.jpg` });
   const { data } = await axios.post(CATBOX, form, { headers: form.getHeaders(), timeout: 30000 });
   if (typeof data === 'string' && data.trim().startsWith('http')) return data.trim();

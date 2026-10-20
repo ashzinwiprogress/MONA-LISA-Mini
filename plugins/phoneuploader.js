@@ -2,7 +2,7 @@ const { cmd } = require('../redx');
 const axios = require('axios');
 const FormData = require('form-data');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/tools/Pone-uploader';
+const API = 'https://api.omegatech.app/api/tools/Pone-uploader';
 
 cmd({
   pattern: "pone",

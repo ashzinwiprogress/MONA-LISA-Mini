@@ -21,7 +21,7 @@ cmd({
 
     reply(`*🔄 Extracting prompt from repo...*\n*📦 ${repoUrl}*`);
 
-    const apiUrl = `https://omegatech-api.dixonomega.tech/api/tools/gitverse?action=scrape&repo=${encodeURIComponent(repoUrl)}`;
+    const apiUrl = `https://api.omegatech.app/api/tools/gitverse?action=scrape&repo=${encodeURIComponent(repoUrl)}`;
     const { data } = await axios.get(apiUrl, { timeout: 30000 });
 
     if (!data.success) throw new Error('Failed to scrape repo');

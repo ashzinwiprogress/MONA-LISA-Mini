@@ -13,10 +13,10 @@ function getThumb() {
 
 function formatMatch(m) {
     try {
-        const home = m.home_team || m.homeTeam || m.home || m.team1 || m.localteam?.name || 'Home';
-        const away = m.away_team || m.awayTeam || m.away || m.team2 || m.visitorteam?.name || 'Away';
-        const homeScore = m.home_score ?? m.homeScore ?? m.score1 ?? m.goals_home ?? m.localteam?.goals ?? '-';
-        const awayScore = m.away_score ?? m.awayScore ?? m.score2 ?? m.goals_away ?? m.visitorteam?.goals ?? '-';
+        const home = m.home_team || m.homeTeam || m.home?.name || m.home || m.team1 || m.localteam?.name || 'Home';
+        const away = m.away_team || m.awayTeam || m.away?.name || m.away || m.team2 || m.visitorteam?.name || 'Away';
+        const homeScore = m.home_score ?? m.homeScore ?? m.home?.score ?? m.score1 ?? m.goals_home ?? m.localteam?.goals ?? '-';
+        const awayScore = m.away_score ?? m.awayScore ?? m.away?.score ?? m.score2 ?? m.goals_away ?? m.visitorteam?.goals ?? '-';
         const status = m.status || m.match_status || m.state || 'LIVE';
         const minute = m.minute || m.time || m.live_minute || '';
         const league = m.league || m.competition || m.tournament?.name || m.league_name || '';
@@ -117,11 +117,17 @@ cmd({
         } catch (e) { console.log('scores GET fail', e.message); }
     }
 
-    // Bare GET
     if (!dataResult) {
         try {
             const { data } = await axios.get(API, { timeout: 30000 });
             dataResult = data.data || data.result || data;
+        } catch {}
+    }
+
+    if (!dataResult) {
+        try {
+            const { data } = await axios.get('https://api.omegatech.app/api/Sport/Sport?action=matches', { timeout: 30000 });
+            dataResult = data.data || data;
         } catch {}
     }
 

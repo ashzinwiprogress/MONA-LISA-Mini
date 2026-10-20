@@ -74,12 +74,12 @@ cmd({
       await conn.sendMessage(from, { react: { text: "🎨", key: mek.key } });
       reply(`*🍌 Editing your image... Please wait ☺️*\n_Keeping original face..._`);
 
-      const { data: init } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana2?prompt=${encodeURIComponent(prompt)}&image=${encodeURIComponent(imageUrl)}`, { timeout: 30000 });
+      const { data: init } = await axios.get(`https://api.omegatech.app/api/ai/nano-banana2?prompt=${encodeURIComponent(prompt)}&image=${encodeURIComponent(imageUrl)}`, { timeout: 30000 });
 
       let resultUrl = null;
       for (let i = 0; i < 20; i++) {
         await new Promise(r => setTimeout(r, 5000));
-        const { data: check } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana2-result?task_id=${init.task_id}`, { timeout: 15000 });
+        const { data: check } = await axios.get(`https://api.omegatech.app/api/ai/nano-banana2-result?task_id=${init.task_id}`, { timeout: 15000 });
         if (check.status === 'completed') { resultUrl = check.image_url; break; }
         if (check.status === 'failed') throw new Error('Edit failed on server');
       }
@@ -101,7 +101,7 @@ cmd({
     await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
     reply(`*🍌 Generating your image... Please wait ☺️*`);
 
-    const { data } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana-pro?prompt=${encodeURIComponent(q)}`, { timeout: 60000 });
+    const { data } = await axios.get(`https://api.omegatech.app/api/ai/nano-banana-pro?prompt=${encodeURIComponent(q)}`, { timeout: 60000 });
 
     if (data.image) {
       const imgBuf = await axios.get(data.image, { responseType: 'arraybuffer' });
@@ -140,7 +140,7 @@ cmd({
       await conn.sendMessage(from, { react: { text: "🕒", key: mek.key } });
       reply(`*🍌 Blending ${session.images.length} images...*\n*📝 Prompt: ${finalPrompt}*`);
 
-      let apiUrl = `https://omegatech-api.dixonomega.tech/api/ai/nanobana-pro-v3?prompt=${encodeURIComponent(finalPrompt)}`;
+      let apiUrl = `https://api.omegatech.app/api/ai/nanobana-pro-v3?prompt=${encodeURIComponent(finalPrompt)}`;
       session.images.forEach((url, i) => { apiUrl += `&image${i + 1}=${encodeURIComponent(url)}`; });
 
       const { data: initRes } = await axios.get(apiUrl);
@@ -149,7 +149,7 @@ cmd({
       let resultUrl = null; let attempts = 0;
       while (!resultUrl && attempts < 25) {
         await new Promise(r => setTimeout(r, 5000));
-        const { data: check } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana2-result?task_id=${taskId}`);
+        const { data: check } = await axios.get(`https://api.omegatech.app/api/ai/nano-banana2-result?task_id=${taskId}`);
         if (check.status === 'completed' && check.image_url) { resultUrl = check.image_url; break; }
         if (check.status === 'failed') throw new Error('Server reported generation failure.');
         attempts++;

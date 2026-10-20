@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/ai/magicstudio';
+const API = 'https://api.omegatech.app/api/ai/magicstudio';
 
 async function generateImage(prompt) {
   // Try as JSON first

@@ -1,43 +1,72 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
+async function fetchImage(url, timeout = 45000) {
+  const res = await axios.get(url, {
+    responseType: 'arraybuffer',
+    timeout,
+    headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'image/*,application/json' },
+    maxRedirects: 5,
+    validateStatus: (s) => s >= 200 && s < 400
+  });
+  const ctype = String(res.headers['content-type'] || '');
+  if (ctype.includes('json')) {
+    const parsed = JSON.parse(Buffer.from(res.data).toString('utf8'));
+    const shot = parsed.screenshot || parsed.url || parsed.image || parsed.data?.screenshot || parsed.data?.url;
+    if (!shot) throw new Error('JSON screenshot API returned no image');
+    return fetchImage(shot, timeout);
+  }
+  if (Buffer.from(res.data).length < 800) throw new Error('Screenshot too small');
+  return Buffer.from(res.data);
+}
+
 cmd({
   pattern: "screenshot",
   alias: ["ss", "webshot", "sitepic"],
   react: "🖥️",
   category: "tools",
-  desc: "Take full HD desktop screenshot of a website",
+  desc: "Take a desktop screenshot of a website",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
   try {
     if (!q) {
       return reply(
-        "*🖥️ WEBSITE SCREENSHOT COMMAND*\n\n" +
-        "Use is tarah:\n" +
-        "*.screenshot <website URL>*\n\n" +
-        "Example:\n" +
-        "*.screenshot https://google.com*"
+        "*WEBSITE SCREENSHOT*\n\n" +
+        "Usage: .screenshot <website URL>\n\n" +
+        "Example:\n.screenshot https://google.com"
       );
     }
 
-    // ✅ API call to movanest.xyz for full HD screenshot (1280x720)
-    const apiUrl = `https:///movanest.xyz/v2/ssweb?url=${encodeURIComponent(q)}&width=1280&height=720&full_page=true`;
-    const res = await axios.get(apiUrl, { timeout: 60000 });
+    let target = q.trim();
+    if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
 
-    if (!res.data || !res.data.status || !res.data.screenshot) {
-      return reply("❌ Screenshot generate nahi hua / API se response nahi aaya");
+    await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+
+    const tries = [
+      `https://image.thum.io/get/width/1280/crop/900/noanimate/${target}`,
+      `https://mini.s-shot.ru/1280x720/PNG/1280/${encodeURIComponent(target)}`,
+      `https://api.microlink.io/?url=${encodeURIComponent(target)}&screenshot=true&meta=false&embed=screenshot.url`
+    ];
+
+    let buffer = null;
+    let lastErr = null;
+    for (const api of tries) {
+      try {
+        buffer = await fetchImage(api);
+        if (buffer) break;
+      } catch (e) {
+        lastErr = e;
+      }
     }
 
-    const screenshotUrl = res.data.screenshot;
+    if (!buffer) throw lastErr || new Error('All screenshot providers failed');
 
-    // ✅ Send screenshot
     await conn.sendMessage(from, {
-      image: { url: screenshotUrl },
-      caption: `🖥️ Screenshot of: ${q}`
+      image: buffer,
+      caption: `Screenshot of: ${target}\nPowered by Progress Tech`
     }, { quoted: mek });
-
   } catch (err) {
     console.error("SCREENSHOT COMMAND ERROR:", err.message);
-    reply("❌ Screenshot generate nahi hua / API busy");
+    reply("Screenshot failed. Check the URL and try again.");
   }
 });

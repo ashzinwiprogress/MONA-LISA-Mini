@@ -1,8 +1,8 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/ai/text2image';
-const API_BACKUP = 'https://api.dixonomega.tech/api/ai/text2image';
+const API = 'https://api.omegatech.app/api/ai/text2image';
+const API_BACKUP = 'https://api.omegatech.app/api/ai/text2image';
 
 cmd({
   pattern: "aimage",

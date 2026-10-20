@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/tools/web-extract';
+const API = 'https://api.omegatech.app/api/tools/web-extract';
 
 cmd({
   pattern: "webextract",

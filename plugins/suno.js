@@ -13,7 +13,7 @@ const activeGenerations = new Set();
 
 async function generateMusicOld(prompt) {
     if (!prompt) throw "Prompt is required";
-    const url = `https://omegatech-api.dixonomega.tech/api/ai/sonu3?action=full&prompt=${encodeURIComponent(prompt)}`;
+    const url = `https://api.omegatech.app/api/ai/sonu3?action=full&prompt=${encodeURIComponent(prompt)}`;
     const { data } = await axios.get(url, { timeout: 120000 });
     // fix: API sometimes returns {data: {...}} 
     const d = data.data || data;

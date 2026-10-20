@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/Maker/Fancy-text';
+const API = 'https://api.omegatech.app/api/Maker/Fancy-text';
 
 cmd({
   pattern: "fancy",

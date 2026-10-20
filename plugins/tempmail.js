@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/tools/TempMail2';
+const API = 'https://api.omegatech.app/api/tools/TempMail2';
 
 async function callApi(params) {
   const { data } = await axios.get(API, { params, timeout: 30000 });

@@ -3,7 +3,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/ai/llamacoder';
+const API = 'https://api.omegatech.app/api/ai/llamacoder';
 
 global.llamaSessions = global.llamaSessions || {};
 

@@ -2,14 +2,14 @@ const { cmd } = require('../redx');
 const axios = require('axios');
 const FormData = require('form-data');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/ai/Argen';
+const API = 'https://api.omegatech.app/api/ai/Argen';
 const CATBOX = 'https://catbox.moe/user/api.php';
 
 const MODELS = ['flux2_klein_fast','flux2_klein','realvis_lighting','dream_shape_lighting','juggernaut_lighting','redcraft_illustrious','ilustreal_illustrious','prefect_illustrious','prefectious_illustrious','illustrij_Illustrious','goddess_illustrious','perfectdeliberate_illustrious','samaritan_sdxl','guofeng_sdxl','disney_cartoon_sdxl','babes_illustrious','raemu_lighting','wai_Illustrious','redzimage_zimg'];
 const ENGINES = ['wan2_2','hunyuan1_5','ltx2'];
 
 async function uploadCatbox(buf){
-  const f = new FormData(); f.append('reqtype','fileToUpload'); f.append('fileToUpload', buf, {filename: `argen_${Date.now()}.jpg`});
+  const f = new FormData(); f.append('reqtype','fileupload'); f.append('fileToUpload', buf, {filename: `argen_${Date.now()}.jpg`});
   const { data } = await axios.post(CATBOX, f, {headers: f.getHeaders()});
   if(typeof data==='string' && data.startsWith('http')) return data.trim();
   throw new Error('Upload fail');

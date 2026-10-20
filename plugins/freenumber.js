@@ -1,7 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/tools/Temp-number';
+const API = 'https://api.omegatech.app/api/tools/Temp-number';
 
 function extractCode(text) {
   if (!text) return null;

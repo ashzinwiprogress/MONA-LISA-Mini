@@ -2,7 +2,7 @@ const { cmd } = require('../redx');
 const axios = require('axios');
 const FormData = require('form-data');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/tools/File-uploader';
+const API = 'https://api.omegatech.app/api/tools/File-uploader';
 
 cmd({
   pattern: "filegoat",

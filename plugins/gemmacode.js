@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const FormData = require('form-data');
 
-const API = 'https://omegatech-api.dixonomega.tech/api/ai/Gemma-code-gen';
+const API = 'https://api.omegatech.app/api/ai/Gemma-code-gen';
 const CATBOX = 'https://catbox.moe/user/api.php';
 
 global.gemmaSessions = global.gemmaSessions || {};
@@ -12,7 +12,7 @@ global.gemmaLastCode = global.gemmaLastCode || {};
 
 async function uploadToCatbox(buffer, ext='html') {
   const form = new FormData();
-  form.append('reqtype', 'fileToUpload');
+  form.append('reqtype', 'fileupload');
   form.append('fileToUpload', buffer, { filename: `gemma_${Date.now()}.${ext}` });
   const { data } = await axios.post(CATBOX, form, { headers: form.getHeaders(), timeout: 30000 });
   if (typeof data === 'string' && data.startsWith('http')) return data.trim();
