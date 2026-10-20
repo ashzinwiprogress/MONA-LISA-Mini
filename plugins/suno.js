@@ -13,18 +13,31 @@ const activeGenerations = new Set();
 
 async function generateMusicOld(prompt) {
     if (!prompt) throw "Prompt is required";
-    const url = `https://api.omegatech.app/api/ai/sonu3?action=full&prompt=${encodeURIComponent(prompt)}`;
-    const { data } = await axios.get(url, { timeout: 120000 });
-    // fix: API sometimes returns {data: {...}} 
-    const d = data.data || data;
-    if (!d?.url && !d?.audio_url) throw "No music generated";
+    const start = await axios.get(`https://api.omegatech.app/api/ai/sonu3?action=generate&prompt=${encodeURIComponent(prompt)}`, { timeout: 120000 });
+    const body = start.data || {};
+    const d0 = body.data || body;
+    let audio = d0.url || d0.audio_url || d0.audioUrl || body.audioUrl;
+    let taskId = body.taskId || d0.taskId;
+    if (!audio && taskId) {
+        for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 7000));
+            const { data: st } = await axios.get(`https://api.omegatech.app/api/ai/sonu3?action=result&taskId=${encodeURIComponent(taskId)}`, { timeout: 60000 });
+            const sd = st.data || st;
+            audio = sd.audioUrl || sd.audio_url || sd.url || sd.audio;
+            if (Array.isArray(sd.songs) && sd.songs[0]) audio = audio || sd.songs[0].audioUrl || sd.songs[0].url;
+            if (audio) break;
+            const status = String(sd.status || st.status || '').toLowerCase();
+            if (status === 'failed' || status === 'error') throw sd.message || 'Sonu3 failed';
+        }
+    }
+    if (!audio) throw "No music generated";
     return {
-        title: d.title || prompt.slice(0,20),
-        audio_url: d.url || d.audio_url,
-        image_url: d.thumbnail || d.image_url || CLOUDINARY_IMAGE,
-        lyrics: d.lyrics || 'No lyrics available.',
-        tags: d.tags || 'N/A',
-        duration: d.duration || 0,
+        title: d0.title || prompt.slice(0, 20),
+        audio_url: audio,
+        image_url: d0.thumbnail || d0.image_url || CLOUDINARY_IMAGE,
+        lyrics: d0.lyrics || 'No lyrics available.',
+        tags: d0.tags || 'N/A',
+        duration: d0.duration || 0,
     };
 }
 

@@ -221,7 +221,7 @@ cmd({
         const outUrl = d.image || d.url || d.imageUrl;
         if (!outUrl) throw new Error('No image URL returned: ' + JSON.stringify(res).slice(0, 300));
 
-        await sendImageBuffer(conn, from, mek, outUrl, `*✅ Nano-Banana Edit*\n*Prompt:* ${q}\n\n*${BRAND}*\n${CHANNEL_LINK}`);
+        await sendImageBuffer(conn, from, mek, outUrl, `*Nano-Banana Edit*\nPrompt: ${q}\nModel: ${d.model || 'nano-banana-lite'}\n\nPowered by Progress Tech\n${CHANNEL_LINK}`);
     } catch (e) {
         console.error('[nanoedit]', e.message);
         reply(`*❌ Nano-Banana Edit failed*\n${e.message}`);
@@ -248,15 +248,16 @@ cmd({
 
         let taskId = taskResume;
         if (!taskId) {
-            await reply(`*🎵 Composing...*\n*Prompt:* ${prompt}\n\n_Wait ~90s..._`);
+            await reply(`Composing Sonu3 / Mureka...\nPrompt: ${prompt}\nWait ~90s...\n\nPowered by Progress Tech`);
             const gen = await apiGet(`/api/ai/sonu3?action=generate&prompt=${encodeURIComponent(prompt)}`, 120000);
             const gd = gen.data || gen;
-            taskId = (gd && (gd.taskId || gd.task_id || gd.id)) || (gen.taskId);
-            const direct = gd && (gd.audioUrl || gd.url || gd.music);
+            taskId = gen.taskId || gd.taskId || gd.task_id || gd.id;
+            const direct = gd.audioUrl || gd.url || gd.music || gen.audioUrl;
             if (direct) {
-                return conn.sendMessage(from, { audio: { url: direct }, mimetype: 'audio/mpeg', caption: `*✅ Sonu3*\n*Prompt:* ${prompt}\n\n*${BRAND}*` }, { quoted: mek });
+                return conn.sendMessage(from, { audio: { url: direct }, mimetype: 'audio/mpeg', caption: `*Sonu3*\nPrompt: ${prompt}\n\nPowered by Progress Tech` }, { quoted: mek });
             }
             if (!taskId) throw new Error('No taskId returned: ' + JSON.stringify(gen).slice(0, 300));
+            await reply(`Task started: ${taskId}\nPolling result...`);
         }
 
         let audioUrl = null;
@@ -276,11 +277,150 @@ cmd({
         await conn.sendMessage(from, {
             audio: { url: audioUrl },
             mimetype: 'audio/mpeg',
-            caption: `*✅ Sonu3 Music*\n*Prompt:* ${prompt || '[resumed task]'}\n*Task:* ${taskId}\n\n*${BRAND}*\n${CHANNEL_LINK}`,
+            caption: `*Sonu3 Music*\nPrompt: ${prompt || '[resumed task]'}\nTask: ${taskId}\n\nPowered by Progress Tech\n${CHANNEL_LINK}`,
         }, { quoted: mek });
     } catch (e) {
         console.error('[sonu3]', e.message);
-        reply(`*❌ Sonu3 failed*\n${e.message}`);
+        reply(`Sonu3 failed: ${e.message}`);
+    }
+});
+
+function pickAudioUrl(obj) {
+    if (!obj) return null;
+    const d = obj.data || obj;
+    let cand = d.audioUrl || d.audio_url || d.url || d.audio || d.music || d.song || d.streamUrl || d.downloadUrl;
+    if (!cand && Array.isArray(d.songs) && d.songs.length) cand = d.songs[0].audioUrl || d.songs[0].url || d.songs[0];
+    if (!cand && Array.isArray(d.tracks) && d.tracks.length) cand = d.tracks[0].audioUrl || d.tracks[0].url || d.tracks[0].musicFile;
+    if (typeof cand === 'string' && cand.startsWith('http')) return cand;
+    return null;
+}
+
+cmd({
+    pattern: "remusic",
+    alias: ["remu", "aimusic", "remusicai"],
+    react: "🎵",
+    desc: "Remusic V5 song generation",
+    category: "music",
+    filename: __filename
+}, async (conn, mek, m, { from, q, reply, prefix }) => {
+    try {
+        const pre = prefix || '.';
+        if (!q) return reply(`*Remusic V5*\n\n${pre}remusic sad song\n${pre}remusic sad song --vocal Duet --model v5\nResume: ${pre}remusic --task <taskId>\n\nPowered by Progress Tech`);
+
+        let prompt = q;
+        let taskResume = null;
+        let vocal = 'Duet';
+        let model = 'v5';
+        const tm = prompt.match(/--task\s+(\S+)/i);
+        if (tm) { taskResume = tm[1]; prompt = prompt.replace(tm[0], '').trim(); }
+        const vm = prompt.match(/--vocal\s+(\S+)/i);
+        if (vm) { vocal = vm[1]; prompt = prompt.replace(vm[0], '').trim(); }
+        const mm = prompt.match(/--model\s+(\S+)/i);
+        if (mm) { model = mm[1]; prompt = prompt.replace(mm[0], '').trim(); }
+        if (!prompt && !taskResume) return reply('Give a song prompt.');
+
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        let taskId = taskResume;
+        if (!taskId) {
+            await reply(`Creating Remusic task...\nPrompt: ${prompt}\nVocal: ${vocal}\nModel: ${model}`);
+            const gen = await apiGet(`/api/ai/Remusic-ai?action=generate_async&prompt=${encodeURIComponent(prompt)}&vocal=${encodeURIComponent(vocal)}&model=${encodeURIComponent(model)}&private=true`, 90000);
+            const gd = gen.data || gen;
+            taskId = gd.taskId || gd.task_id || gen.taskId;
+            const direct = pickAudioUrl(gen);
+            if (direct) {
+                return conn.sendMessage(from, { audio: { url: direct }, mimetype: 'audio/mpeg', caption: `*Remusic*\nPrompt: ${prompt}\n\nPowered by Progress Tech` }, { quoted: mek });
+            }
+            if (!taskId) throw new Error('No taskId returned: ' + JSON.stringify(gen).slice(0, 300));
+            await reply(`Task: ${taskId}\nPolling status...`);
+        }
+
+        let audioUrl = null;
+        for (let i = 0; i < 40; i++) {
+            const st = await apiGet(`/api/ai/Remusic-ai?action=status&taskId=${encodeURIComponent(taskId)}`, 60000);
+            audioUrl = pickAudioUrl(st);
+            const status = String((st.data || st).status || '').toLowerCase();
+            if (audioUrl) break;
+            if (status === 'failed' || status === 'error') throw new Error((st.data || st).message || 'Generation failed');
+            await sleep(7000);
+        }
+        if (!audioUrl) throw new Error('Timed out waiting for Remusic. Try .remusic --task ' + taskId);
+        await conn.sendMessage(from, {
+            audio: { url: audioUrl },
+            mimetype: 'audio/mpeg',
+            caption: `*Remusic V5*\nPrompt: ${prompt || '[resumed]'}\nTask: ${taskId}\n\nPowered by Progress Tech\n${CHANNEL_LINK}`
+        }, { quoted: mek });
+    } catch (e) {
+        console.error('[remusic]', e.message);
+        reply(`Remusic failed: ${e.message}`);
+    }
+});
+
+cmd({
+    pattern: "remcover",
+    alias: ["remusiccover", "aicover", "songcover"],
+    react: "🎤",
+    desc: "Remusic AI cover of a song URL or replied audio",
+    category: "music",
+    filename: __filename
+}, async (conn, mek, m, { from, q, reply, prefix }) => {
+    try {
+        const pre = prefix || '.';
+        let raw = q || '';
+        let model = 'prince';
+        let taskResume = null;
+        const tm = raw.match(/--task\s+(\S+)/i);
+        if (tm) { taskResume = tm[1]; raw = raw.replace(tm[0], '').trim(); }
+        const mm = raw.match(/--model\s+(\S+)/i);
+        if (mm) { model = mm[1]; raw = raw.replace(mm[0], '').trim(); }
+        else if (raw && !raw.startsWith('http') && !m.quoted) model = raw.trim() || model;
+
+        let songUrl = (raw.match(/https?:\/\/\S+/i) || [])[0] || '';
+        if (!taskResume && !songUrl && m.quoted) {
+            const quoted = m.quoted;
+            const isAudio = quoted.mtype === 'audioMessage' || quoted.message?.audioMessage || quoted.mtype === 'videoMessage' || quoted.message?.videoMessage;
+            if (!isAudio) return reply(`*Remusic Cover*\n\nReply to audio with ${pre}remcover prince\nOr: ${pre}remcover https://...mp3 --model prince`);
+            await reply('Uploading audio...');
+            const buf = await quoted.download();
+            if (!buf) throw new Error('Could not download replied audio.');
+            songUrl = await uploadToCatbox(Buffer.from(buf), 'cover.mp3');
+        }
+        if (!taskResume && !songUrl) {
+            return reply(`*Remusic Cover*\n\nReply to a song with ${pre}remcover\nOr: ${pre}remcover <audio-url> --model prince\n\nPowered by Progress Tech`);
+        }
+
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        let taskId = taskResume;
+        if (!taskId) {
+            await reply(`Creating cover...\nModel: ${model}`);
+            const gen = await apiGet(`/api/ai/Remusic-cover?action=cover_async&songUrl=${encodeURIComponent(songUrl)}&model=${encodeURIComponent(model)}&outputFormat=mp3&pitchChange=no-change&modelType=1`, 90000);
+            const gd = gen.data || gen;
+            taskId = gd.taskId || gd.task_id || gen.taskId;
+            const direct = pickAudioUrl(gen);
+            if (direct) {
+                return conn.sendMessage(from, { audio: { url: direct }, mimetype: 'audio/mpeg', caption: `*Remusic Cover*\nModel: ${model}\n\nPowered by Progress Tech` }, { quoted: mek });
+            }
+            if (!taskId) throw new Error('No taskId returned: ' + JSON.stringify(gen).slice(0, 300));
+            await reply(`Task: ${taskId}\nPolling cover...`);
+        }
+
+        let audioUrl = null;
+        for (let i = 0; i < 40; i++) {
+            const st = await apiGet(`/api/ai/Remusic-cover?action=status&taskId=${encodeURIComponent(taskId)}`, 60000);
+            audioUrl = pickAudioUrl(st);
+            const status = String((st.data || st).status || '').toLowerCase();
+            if (audioUrl) break;
+            if (status === 'failed' || status === 'error') throw new Error((st.data || st).message || 'Cover failed');
+            await sleep(7000);
+        }
+        if (!audioUrl) throw new Error('Timed out waiting for cover. Try .remcover --task ' + taskId);
+        await conn.sendMessage(from, {
+            audio: { url: audioUrl },
+            mimetype: 'audio/mpeg',
+            caption: `*Remusic Cover*\nModel: ${model}\nTask: ${taskId}\n\nPowered by Progress Tech\n${CHANNEL_LINK}`
+        }, { quoted: mek });
+    } catch (e) {
+        console.error('[remcover]', e.message);
+        reply(`Remusic cover failed: ${e.message}`);
     }
 });
 
