@@ -1338,7 +1338,7 @@ conn.ev.on('connection.update', async (update) => {
                 // ========== BODY EVENTS ==========
                 const events = require("./redx");
                 events.commands.forEach(async (command) => {
-                    if (body && command.on === "body") {
+                    if (command.on === "body" && (body || mek.message?.imageMessage)) {
                         try {
                             await command.function(conn, mek, m, {
                                 from,

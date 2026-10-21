@@ -12,6 +12,19 @@ const updateConfig = async (key, value, botNumber, config, reply) => {
         const newConfig = {...config };
         newConfig[key] = value;
 
+        if (key === 'WELCOME') {
+            newConfig.GROUP_WELCOME = value;
+            newConfig.WELCOME_ENABLE = value;
+            config.GROUP_WELCOME = value;
+            config.WELCOME_ENABLE = value;
+        }
+        if (key === 'GOODBYE') {
+            newConfig.GROUP_GOODBYE = value;
+            newConfig.GOODBYE_ENABLE = value;
+            config.GROUP_GOODBYE = value;
+            config.GOODBYE_ENABLE = value;
+        }
+
         await updateUserConfig(botNumber, newConfig);
 
         return reply(`✅ *${key}* has been updated to: *${value}*`);
@@ -104,11 +117,16 @@ async(conn, mek, m, { args, isOwner, reply, botNumber, config }) => {
     const value = args[0]?.toLowerCase();
 
     if (value === 'on' || value === 'true') {
+        config.GROUP_WELCOME = 'true';
+        config.WELCOME_ENABLE = 'true';
         await updateConfig('WELCOME', 'true', botNumber, config, reply);
     } else if (value === 'off' || value === 'false') {
+        config.GROUP_WELCOME = 'false';
+        config.WELCOME_ENABLE = 'false';
         await updateConfig('WELCOME', 'false', botNumber, config, reply);
     } else {
-        reply(`*CURRENTLY :❯ ${config.WELCOME} 😊*\n\n*WHOEVER JOINS THE GROUP WILL GET A WELCOME MESSAGE 😃 TO ENABLE THIS SETTING TYPE ☺️*\n*👑 ❮WELCOME ON❯ 👑*\n*TO DISABLE WELCOME TYPE ☺️*\n*👑 ❮WELCOME OFF❯ 👑*`);
+        const state = config.WELCOME || config.GROUP_WELCOME || 'false';
+        reply(`*CURRENTLY :❯ ${state}*\n\nWhoever joins the group gets a welcome with their profile photo.\nEnable: .welcome on\nDisable: .welcome off`);
     }
 });
 
@@ -123,11 +141,16 @@ async(conn, mek, m, { args, isOwner, reply, botNumber, config }) => {
     const value = args[0]?.toLowerCase();
 
     if (value === 'on' || value === 'true') {
+        config.GROUP_GOODBYE = 'true';
+        config.GOODBYE_ENABLE = 'true';
         await updateConfig('GOODBYE', 'true', botNumber, config, reply);
     } else if (value === 'off' || value === 'false') {
+        config.GROUP_GOODBYE = 'false';
+        config.GOODBYE_ENABLE = 'false';
         await updateConfig('GOODBYE', 'false', botNumber, config, reply);
     } else {
-        reply(`*CURRENTLY :❯ ${config.GOODBYE} 😊*\n\n*WHOEVER LEAVES THE GROUP WILL GET A GOODBYE MESSAGE 😃 TO ENABLE THIS SETTING TYPE ☺️*\n*👑 ❮GOODBYE ON❯ 👑*\n*TO DISABLE GOODBYE TYPE ☺️*\n*👑 ❮GOODBYE OFF❯ 👑*`);
+        const state = config.GOODBYE || config.GROUP_GOODBYE || 'false';
+        reply(`*CURRENTLY :❯ ${state}*\n\nWhoever leaves the group gets a goodbye with their profile photo.\nEnable: .goodbye on\nDisable: .goodbye off`);
     }
 });
 
