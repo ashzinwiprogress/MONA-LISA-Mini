@@ -9,8 +9,6 @@ const bootTime = Date.now();
 const CHANNEL_LINK = config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05';
 const CHANNEL_JID = config.CHANNEL_JID || '120363431455356251@newsletter';
 const PREFIX = () => config.PREFIX || '.';
-const IMAGE_CAPTION_LIMIT = 1024;
-const TEXT_LIMIT = 3400;
 
 const SECTIONS = [
   { key: 'ai', title: '🧠 AI & INTELLIGENCE', match: ['ai', 'progresstech ai', 'progresstech-ai'] },
@@ -42,6 +40,7 @@ const MENU_IMAGES = [
   'https://files.catbox.moe/jdnmqf.jpg'
 ];
 const menuViewCount = new Map();
+let cachedLocalImage = null;
 
 function uptime() {
   const sec = Math.floor((Date.now() - bootTime) / 1000);
@@ -88,10 +87,8 @@ function ctxInfo(sender) {
   };
 }
 
-function block(title, lines) {
-  const head = `╭━━〔 ${title} 〕`;
-  const body = lines.map((l) => `│ ${l}`).join('\n');
-  return `${head}\n${body}\n╰━━━━━━━━━━━━━━━━━━`;
+function block(title, line) {
+  return `╭━━〔 ${title} 〕\n│ ${line}\n╰━━━━━━━━━━━━━━━━━━`;
 }
 
 function banner() {
@@ -106,22 +103,21 @@ function statusBox(pushName, total) {
   const pre = PREFIX();
   const time = moment().tz('Africa/Lagos').format('HH:mm:ss');
   const date = moment().tz('Africa/Lagos').format('dddd, Do MMMM YYYY');
-  return block('⚜️ STATUS', [
-    `👤 User     : ${pushName}`,
-    `👑 Owner    : ${config.OWNER_NAME}`,
-    `⚡ Prefix    : ${pre}`,
-    `📜 Commands  : ${total}`,
-    `⏱️ Uptime    : ${uptime()}`,
-    `🕰️ Time      : ${time}`,
-    `📅 Date      : ${date}`
-  ]);
+  return (
+    `╭━━〔 ⚜️ STATUS 〕\n` +
+    `│ 👤 User     : ${pushName}\n` +
+    `│ 👑 Owner    : ${config.OWNER_NAME}\n` +
+    `│ ⚡ Prefix    : ${pre}\n` +
+    `│ 📜 Commands  : ${total}\n` +
+    `│ ⏱️ Uptime    : ${uptime()}\n` +
+    `│ 🕰️ Time      : ${time}\n` +
+    `│ 📅 Date      : ${date}\n` +
+    `╰━━━━━━━━━━━━━━━━━━`
+  );
 }
 
 function channelBox() {
-  return block('📡 STAY CONNECTED', [
-    `📢 ${CHANNEL_LINK}`,
-    `🥰 Follow for updates & new features`
-  ]);
+  return block('📡 STAY CONNECTED', `📢 ${CHANNEL_LINK}  ·  🥰 Follow for updates`);
 }
 
 function footerLine() {
@@ -131,25 +127,36 @@ function footerLine() {
   );
 }
 
+function cmdLine(list, pre) {
+  return list.map((p) => `◈ ${pre}${p}`).join('  ');
+}
+
 function findSection(key) {
   const k = String(key || '').toLowerCase().trim();
   return SECTIONS.find((s) => s.key === k || s.title.toLowerCase().includes(k) || s.match.includes(k));
 }
 
-function categoryCaption(key, pushName) {
+function buildMenu(pushName, onlyKey) {
   const pre = PREFIX();
   const { grouped, total } = groupedCommands();
-  const section = findSection(key);
-  if (!section || !grouped[section.key]?.length) {
-    const names = SECTIONS.filter((s) => grouped[s.key]?.length).map((s) => `${pre}menu ${s.key}`).join('\n');
-    return `Unknown hall "${key}".\n\nOpen a hall:\n${names}\n\n${pre}menu`;
+  const sections = onlyKey
+    ? SECTIONS.filter((s) => s === findSection(onlyKey))
+    : SECTIONS;
+  const boxes = sections
+    .filter((s) => grouped[s.key]?.length)
+    .map((s) => block(s.title, cmdLine(grouped[s.key], pre)));
+
+  if (onlyKey && !boxes.length) {
+    const names = SECTIONS.filter((s) => grouped[s.key]?.length).map((s) => `${pre}menu ${s.key}`).join('  ');
+    return `Unknown hall "${onlyKey}".\nOpen: ${names}\n${pre}menu`;
   }
+
   return [
     banner(),
     '',
     statusBox(pushName, total),
     '',
-    block(section.title, grouped[section.key].map((p) => `◈ ${pre}${p}`)),
+    boxes.join('\n\n'),
     '',
     channelBox(),
     '',
@@ -157,41 +164,12 @@ function categoryCaption(key, pushName) {
   ].join('\n').trim();
 }
 
-function menuChunks(pushName) {
-  const pre = PREFIX();
-  const { grouped, total } = groupedCommands();
-  const header = [banner(), '', statusBox(pushName, total)].join('\n');
-  const boxes = SECTIONS.filter((s) => grouped[s.key]?.length)
-    .map((s) => block(s.title, grouped[s.key].map((p) => `◈ ${pre}${p}`)));
-  const tail = [channelBox(), '', footerLine()].join('\n');
-
-  const chunks = [];
-  let buf = header;
-  for (const box of boxes) {
-    const next = buf + '\n\n' + box;
-    const limit = chunks.length === 0 ? IMAGE_CAPTION_LIMIT : TEXT_LIMIT;
-    if (next.length > limit) {
-      chunks.push(buf);
-      buf = box;
-    } else {
-      buf = next;
-    }
-  }
-  if ((buf + '\n\n' + tail).length > (chunks.length === 0 ? IMAGE_CAPTION_LIMIT : TEXT_LIMIT)) {
-    chunks.push(buf);
-    chunks.push(tail);
-  } else {
-    chunks.push(buf + '\n\n' + tail);
-  }
-  return chunks;
-}
-
 async function downloadImage(imageUrl) {
   if (!imageUrl) return null;
   try {
     const res = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
-      timeout: 8000,
+      timeout: 10000,
       maxRedirects: 3,
       headers: { 'User-Agent': 'Mozilla/5.0' },
       validateStatus: (s) => s >= 200 && s < 300
@@ -203,73 +181,74 @@ async function downloadImage(imageUrl) {
   }
 }
 
-async function sendFollowButton(conn, from, sender) {
-  const buttons = [
-    {
-      name: 'cta_url',
-      buttonParamsJson: JSON.stringify({
-        display_text: '📢 Follow Channel',
-        url: CHANNEL_LINK,
-        merchant_url: CHANNEL_LINK
-      })
-    }
-  ];
+async function localBrandImage() {
+  if (cachedLocalImage) return cachedLocalImage;
   try {
-    await conn.relayMessage(from, {
-      interactiveMessage: {
-        header: { title: '🥰 MONA LISA V2 🤭', hasMediaAttachment: false },
-        body: { text: 'Tap below to follow the official Progress Tech channel.' },
-        footer: { text: `Powered by ${config.OWNER_NAME}` },
-        nativeFlowMessage: { buttons },
-        contextInfo: ctxInfo(sender)
+    const Jimp = require('jimp');
+    const img = new Jimp(720, 720, 0x140c06ff);
+    const gold = 0xc9a227ff;
+    img.scan(0, 0, 720, 720, function (x, y, idx) {
+      if (x < 18 || y < 18 || x >= 702 || y >= 702) {
+        this.bitmap.data[idx] = (gold >> 24) & 255;
+        this.bitmap.data[idx + 1] = (gold >> 16) & 255;
+        this.bitmap.data[idx + 2] = (gold >> 8) & 255;
+        this.bitmap.data[idx + 3] = 255;
       }
-    }, {
-      additionalNodes: [{
-        tag: 'biz',
-        attrs: {},
-        content: [{
-          tag: 'interactive',
-          attrs: { type: 'native_flow', v: '1' },
-          content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }]
-        }]
-      }]
     });
-    return true;
-  } catch (e) {
-    console.error('follow button', e.message);
-    return false;
+    const font = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE);
+    const font2 = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
+    img.print(font, 0, 270, { text: 'MONA LISA', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 720);
+    img.print(font2, 0, 360, { text: 'V2  ·  MINI', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 720);
+    img.print(font2, 0, 430, { text: 'PROGRESS TECH', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 720);
+    cachedLocalImage = await img.quality(85).getBufferAsync(Jimp.MIME_JPEG);
+    return cachedLocalImage;
+  } catch (_) {
+    return null;
   }
 }
 
-async function sendMenuChunks(conn, from, chunks, sender, imageUrl) {
-  let usedImage = false;
-  for (const part of chunks) {
-    if (!usedImage) {
-      const buf = await downloadImage(imageUrl);
-      if (buf) {
-        try {
-          await conn.sendMessage(from, {
-            image: buf,
-            caption: part.slice(0, IMAGE_CAPTION_LIMIT),
-            contextInfo: ctxInfo(sender)
-          }, { quoted: fakevCard });
-          usedImage = true;
-          if (part.length > IMAGE_CAPTION_LIMIT) {
-            await conn.sendMessage(from, {
-              text: part.slice(IMAGE_CAPTION_LIMIT),
-              contextInfo: ctxInfo(sender)
-            }, { quoted: fakevCard });
-          }
-          continue;
-        } catch (_) {}
-      }
-    }
-    await conn.sendMessage(from, {
-      text: part,
-      contextInfo: ctxInfo(sender)
-    }, { quoted: fakevCard });
+async function getMenuImage(imageUrl) {
+  const urls = [imageUrl, config.IMAGE_PATH].filter(Boolean);
+  for (const url of urls) {
+    const buf = await downloadImage(url);
+    if (buf) return buf;
   }
-  await sendFollowButton(conn, from, sender);
+  return localBrandImage();
+}
+
+async function sendOneMenu(conn, from, caption, sender, imageUrl) {
+  const buf = await getMenuImage(imageUrl);
+  const info = ctxInfo(sender);
+
+  if (buf) {
+    try {
+      await conn.sendMessage(from, {
+        image: buf,
+        caption,
+        contextInfo: info
+      }, { quoted: fakevCard });
+      return;
+    } catch (e) {
+      console.error('menu image send', e.message);
+    }
+  }
+
+  await conn.sendMessage(from, {
+    text: caption,
+    contextInfo: {
+      ...info,
+      ...(buf ? {
+        externalAdReply: {
+          title: '🥰 MONA LISA V2 🤭',
+          body: 'Tap to follow the official channel',
+          thumbnail: buf,
+          mediaType: 1,
+          sourceUrl: CHANNEL_LINK,
+          renderLargerThumbnail: true
+        }
+      } : {})
+    }
+  }, { quoted: fakevCard });
 }
 
 cmd({
@@ -301,22 +280,20 @@ cmd({
     const imageUrl = MENU_IMAGES[viewIndex % MENU_IMAGES.length];
     menuViewCount.set(chatKey, viewIndex + 1);
 
-    const chunks = (arg && arg !== 'all' && arg !== 'full' && arg !== 'list')
-      ? [categoryCaption(arg.replace(/^\.+/, ''), pushName)]
-      : menuChunks(pushName);
+    const onlyKey = (arg && arg !== 'all' && arg !== 'full' && arg !== 'list')
+      ? arg.replace(/^\.+/, '')
+      : null;
+    const caption = buildMenu(pushName, onlyKey);
 
     try {
-      await sendMenuChunks(conn, from, chunks, m.sender, imageUrl);
+      await sendOneMenu(conn, from, caption, m.sender, imageUrl);
     } catch (_) {
-      for (const part of chunks) await reply(part);
-      await reply(`📢 Follow: ${CHANNEL_LINK}`);
+      await reply(caption);
     }
   } catch (err) {
     console.error('Menu error:', err);
     try {
-      const chunks = menuChunks(m.pushName || 'Guest');
-      for (const part of chunks) await reply(part);
-      await reply(`📢 Follow: ${CHANNEL_LINK}`);
+      await reply(buildMenu(m.pushName || 'Guest', null));
     } catch (_) {
       await reply(`Menu is ready. Type .menu ai\n${CHANNEL_LINK}`);
     }
