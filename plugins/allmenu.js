@@ -1,31 +1,38 @@
 const { cmd, commands } = require('../redx');
 const moment = require('moment-timezone');
 const axios = require('axios');
-const os = require('os');
 const config = require('../config');
 const { fakevCard } = require('../lib/fakevCard');
+const { pick } = require('../lib/responses');
 
 const bootTime = Date.now();
 const CHANNEL_LINK = config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05';
 const CHANNEL_JID = config.CHANNEL_JID || '120363431455356251@newsletter';
-const OWNER = config.OWNER_NAME || 'Progress Tech';
-const HOST = 'https://progress-tech-taupe.vercel.app/';
-const VERSION = '2.0.0';
 const PREFIX = () => config.PREFIX || '.';
+const IMAGE_CAPTION_LIMIT = 1024;
+const TEXT_LIMIT = 3400;
 
 const SECTIONS = [
-  { key: 'ai', title: 'AI MENU', match: ['ai', 'progresstech ai', 'progresstech-ai'] },
-  { key: 'image', title: 'IMAGE MENU', match: ['image', 'sticker'] },
-  { key: 'video', title: 'VIDEO MENU', match: ['video'] },
-  { key: 'music', title: 'AUDIO MENU', match: ['music', 'song'] },
-  { key: 'download', title: 'DOWNLOAD MENU', match: ['download', 'downloader'] },
-  { key: 'search', title: 'SEARCH MENU', match: ['search'] },
-  { key: 'fun', title: 'GAMES MENU', match: ['fun', 'games'] },
-  { key: 'group', title: 'GROUP MENU', match: ['group', 'admin'] },
-  { key: 'tools', title: 'TOOLS MENU', match: ['tools', 'settings', 'general', 'utility'] },
-  { key: 'sports', title: 'SPORTS MENU', match: ['sports', 'sport'] },
-  { key: 'system', title: 'BOTSTATUS MENU', match: ['system', 'main'] },
-  { key: 'owner', title: 'OWNER MENU', match: ['owner'] }
+  { key: 'ai', title: '🧠 AI & INTELLIGENCE', match: ['ai', 'progresstech ai', 'progresstech-ai'] },
+  { key: 'image', title: '🎨 IMAGE STUDIO', match: ['sticker', 'image'] },
+  { key: 'video', title: '🎬 VIDEO STUDIO', match: ['video'] },
+  { key: 'music', title: '🎵 MUSIC STUDIO', match: ['music', 'song'] },
+  { key: 'download', title: '📥 DOWNLOAD TOOLS', match: ['download', 'downloader'] },
+  { key: 'search', title: '🌐 SEARCH & INFO', match: ['search'] },
+  { key: 'fun', title: '😄 FUN & GAMES', match: ['fun', 'games'] },
+  { key: 'group', title: '👥 GROUP MANAGER', match: ['group', 'admin'] },
+  { key: 'tools', title: '🛠️ UTILITIES', match: ['tools', 'settings', 'general', 'utility'] },
+  { key: 'sports', title: '🏆 SPORTS HALL', match: ['sports', 'sport'] },
+  { key: 'system', title: '🤖 BOT TOOLS', match: ['system', 'main'] },
+  { key: 'owner', title: '🔐 OWNER ONLY', match: ['owner'] }
+];
+
+const TAGLINES = [
+  '"Behind every smile, a command waiting to be painted."',
+  '"Elegance is the only beauty that never fades."',
+  '"A masterpiece never explains itself — it performs."',
+  '"Mystery is my favorite command prefix."',
+  '"Painted once. Remembered forever."'
 ];
 
 const MENU_IMAGES = [
@@ -35,25 +42,14 @@ const MENU_IMAGES = [
   'https://files.catbox.moe/jdnmqf.jpg'
 ];
 const menuViewCount = new Map();
-const CAPTION_LIMIT = 3400;
 
 function uptime() {
   const sec = Math.floor((Date.now() - bootTime) / 1000);
   const d = Math.floor(sec / 86400);
   const h = Math.floor((sec % 86400) / 3600);
   const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
   if (d) return `${d}d ${h}h ${m}m`;
-  if (h) return `${h}h ${m}m ${s}s`;
-  return `${m}m ${s}s`;
-}
-
-function ramBar() {
-  const total = os.totalmem();
-  const used = total - os.freemem();
-  const pct = total ? Math.min(100, Math.round((used / total) * 100)) : 0;
-  const filled = Math.round(pct / 10);
-  return `[${'█'.repeat(filled)}${'░'.repeat(10 - filled)}] ${pct}%`;
+  return `${h}h ${m}m`;
 }
 
 function norm(s) {
@@ -86,42 +82,61 @@ function ctxInfo(sender) {
     mentionedJid: sender ? [sender] : [],
     forwardedNewsletterMessageInfo: {
       newsletterJid: CHANNEL_JID,
-      newsletterName: 'MONA LISA V2',
+      newsletterName: '🥰 MONA LISA V2 🤭',
       serverMessageId: 2
     }
   };
 }
 
-function royalHeader(pushName, total) {
-  const pre = PREFIX();
-  const mode = String(config.MODE || 'public').toLowerCase();
+function block(title, lines) {
+  const head = `╭━━〔 ${title} 〕`;
+  const body = lines.map((l) => `│ ${l}`).join('\n');
+  return `${head}\n${body}\n╰━━━━━━━━━━━━━━━━━━`;
+}
+
+function banner() {
   return (
-    `┏❒ ✦ 𝐌𝐎𝐍𝐀 𝐋𝐈𝐒𝐀 V2 ✦\n` +
-    `   ʀᴏʏᴀʟ ᴄᴏᴜʀᴛ • ʟᴇɢᴇɴᴅᴀʀʏ ᴇᴅɪᴛɪᴏɴ❒\n` +
-    `┃ User: ${pushName || 'Guest'}\n` +
-    `┃ Mode: ${mode}\n` +
-    `┃ Host: ${HOST}\n` +
-    `┃ Prefix: [ ${pre} ]\n` +
-    `┃ Commands: ${total}\n` +
-    `┃ Version: ${VERSION}\n` +
-    `┃ Uptime: ${uptime()}\n` +
-    `┃ Ram: ${ramBar()}\n` +
-    `┃ Crown: ${OWNER}\n` +
-    `┗❒`
+    `_👑 ✦ 𝐌𝐎𝐍𝐀 𝐋𝐈𝐒𝐀 V2🤭 ✦ 👑_\n` +
+    `   ᴍɪɴɪ ʙᴏᴛ • ʟᴇɢᴇɴᴅᴀʀʏ ᴇᴅɪᴛɪᴏɴ\n` +
+    `   ${pick(TAGLINES)}`
   );
 }
 
-function categoryBox(title, list) {
-  const rows = list.map((p) => `┃⌬ ${p}`).join('\n');
-  return `┏➽⟡  *${title}*  ⟡\n${rows}\n┗━⟡`;
+function statusBox(pushName, total) {
+  const pre = PREFIX();
+  const time = moment().tz('Africa/Lagos').format('HH:mm:ss');
+  const date = moment().tz('Africa/Lagos').format('dddd, Do MMMM YYYY');
+  return block('⚜️ STATUS', [
+    `👤 User     : ${pushName}`,
+    `👑 Owner    : ${config.OWNER_NAME}`,
+    `⚡ Prefix    : ${pre}`,
+    `📜 Commands  : ${total}`,
+    `⏱️ Uptime    : ${uptime()}`,
+    `🕰️ Time      : ${time}`,
+    `📅 Date      : ${date}`
+  ]);
+}
+
+function channelBox() {
+  return block('📡 STAY CONNECTED', [
+    `📢 ${CHANNEL_LINK}`,
+    `🥰 Follow for updates & new features`
+  ]);
+}
+
+function footerLine() {
+  return (
+    `┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n` +
+    `🥰 *𝐌𝐎𝐍𝐀 𝐋𝐈𝐒𝐀 V2* 🤭 · Powered by ${config.OWNER_NAME}`
+  );
 }
 
 function findSection(key) {
   const k = String(key || '').toLowerCase().trim();
-  return SECTIONS.find((s) => s.key === k || s.title.toLowerCase() === k || s.match.includes(k));
+  return SECTIONS.find((s) => s.key === k || s.title.toLowerCase().includes(k) || s.match.includes(k));
 }
 
-function categoryCaption(key) {
+function categoryCaption(key, pushName) {
   const pre = PREFIX();
   const { grouped, total } = groupedCommands();
   const section = findSection(key);
@@ -129,37 +144,46 @@ function categoryCaption(key) {
     const names = SECTIONS.filter((s) => grouped[s.key]?.length).map((s) => `${pre}menu ${s.key}`).join('\n');
     return `Unknown hall "${key}".\n\nOpen a hall:\n${names}\n\n${pre}menu`;
   }
-  return (
-    royalHeader('Guest', total) +
-    `\n\n` +
-    categoryBox(section.title, grouped[section.key]) +
-    `\n\n${pre}menu     full court\n${CHANNEL_LINK}`
-  );
+  return [
+    banner(),
+    '',
+    statusBox(pushName, total),
+    '',
+    block(section.title, grouped[section.key].map((p) => `◈ ${pre}${p}`)),
+    '',
+    channelBox(),
+    '',
+    footerLine()
+  ].join('\n').trim();
 }
 
-function menuParts(pushName) {
+function menuChunks(pushName) {
+  const pre = PREFIX();
   const { grouped, total } = groupedCommands();
-  const header = royalHeader(pushName, total);
+  const header = [banner(), '', statusBox(pushName, total)].join('\n');
   const boxes = SECTIONS.filter((s) => grouped[s.key]?.length)
-    .map((s) => categoryBox(s.title, grouped[s.key]));
-  const footer = `┗❒  ${OWNER}\n${CHANNEL_LINK}`;
-  const parts = [];
+    .map((s) => block(s.title, grouped[s.key].map((p) => `◈ ${pre}${p}`)));
+  const tail = [channelBox(), '', footerLine()].join('\n');
+
+  const chunks = [];
   let buf = header;
   for (const box of boxes) {
-    if ((buf + '\n\n' + box).length > CAPTION_LIMIT) {
-      parts.push(buf);
+    const next = buf + '\n\n' + box;
+    const limit = chunks.length === 0 ? IMAGE_CAPTION_LIMIT : TEXT_LIMIT;
+    if (next.length > limit) {
+      chunks.push(buf);
       buf = box;
     } else {
-      buf += '\n\n' + box;
+      buf = next;
     }
   }
-  if ((buf + '\n\n' + footer).length > CAPTION_LIMIT) {
-    parts.push(buf);
-    parts.push(footer);
+  if ((buf + '\n\n' + tail).length > (chunks.length === 0 ? IMAGE_CAPTION_LIMIT : TEXT_LIMIT)) {
+    chunks.push(buf);
+    chunks.push(tail);
   } else {
-    parts.push(buf + '\n\n' + footer);
+    chunks.push(buf + '\n\n' + tail);
   }
-  return parts;
+  return chunks;
 }
 
 async function downloadImage(imageUrl) {
@@ -179,20 +203,63 @@ async function downloadImage(imageUrl) {
   }
 }
 
-async function sendMenuParts(conn, from, parts, sender, imageUrl) {
+async function sendFollowButton(conn, from, sender) {
+  const buttons = [
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({
+        display_text: '📢 Follow Channel',
+        url: CHANNEL_LINK,
+        merchant_url: CHANNEL_LINK
+      })
+    }
+  ];
+  try {
+    await conn.relayMessage(from, {
+      interactiveMessage: {
+        header: { title: '🥰 MONA LISA V2 🤭', hasMediaAttachment: false },
+        body: { text: 'Tap below to follow the official Progress Tech channel.' },
+        footer: { text: `Powered by ${config.OWNER_NAME}` },
+        nativeFlowMessage: { buttons },
+        contextInfo: ctxInfo(sender)
+      }
+    }, {
+      additionalNodes: [{
+        tag: 'biz',
+        attrs: {},
+        content: [{
+          tag: 'interactive',
+          attrs: { type: 'native_flow', v: '1' },
+          content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }]
+        }]
+      }]
+    });
+    return true;
+  } catch (e) {
+    console.error('follow button', e.message);
+    return false;
+  }
+}
+
+async function sendMenuChunks(conn, from, chunks, sender, imageUrl) {
   let usedImage = false;
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
+  for (const part of chunks) {
     if (!usedImage) {
       const buf = await downloadImage(imageUrl);
       if (buf) {
         try {
           await conn.sendMessage(from, {
             image: buf,
-            caption: part,
+            caption: part.slice(0, IMAGE_CAPTION_LIMIT),
             contextInfo: ctxInfo(sender)
           }, { quoted: fakevCard });
           usedImage = true;
+          if (part.length > IMAGE_CAPTION_LIMIT) {
+            await conn.sendMessage(from, {
+              text: part.slice(IMAGE_CAPTION_LIMIT),
+              contextInfo: ctxInfo(sender)
+            }, { quoted: fakevCard });
+          }
           continue;
         } catch (_) {}
       }
@@ -202,12 +269,13 @@ async function sendMenuParts(conn, from, parts, sender, imageUrl) {
       contextInfo: ctxInfo(sender)
     }, { quoted: fakevCard });
   }
+  await sendFollowButton(conn, from, sender);
 }
 
 cmd({
   pattern: 'menu',
   alias: ['commandlist', 'allmenu', 'help', 'listmenu'],
-  desc: 'MONA LISA royal command court',
+  desc: 'Display the full MONA LISA command menu',
   category: 'system',
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
@@ -233,29 +301,24 @@ cmd({
     const imageUrl = MENU_IMAGES[viewIndex % MENU_IMAGES.length];
     menuViewCount.set(chatKey, viewIndex + 1);
 
-    if (arg && arg !== 'all' && arg !== 'full' && arg !== 'list') {
-      const caption = categoryCaption(arg.replace(/^\.+/, ''));
-      try {
-        await sendMenuParts(conn, from, [caption], m.sender, imageUrl);
-      } catch (_) {
-        await reply(caption);
-      }
-      return;
-    }
+    const chunks = (arg && arg !== 'all' && arg !== 'full' && arg !== 'list')
+      ? [categoryCaption(arg.replace(/^\.+/, ''), pushName)]
+      : menuChunks(pushName);
 
-    const parts = menuParts(pushName);
     try {
-      await sendMenuParts(conn, from, parts, m.sender, imageUrl);
+      await sendMenuChunks(conn, from, chunks, m.sender, imageUrl);
     } catch (_) {
-      for (const part of parts) await reply(part);
+      for (const part of chunks) await reply(part);
+      await reply(`📢 Follow: ${CHANNEL_LINK}`);
     }
   } catch (err) {
     console.error('Menu error:', err);
     try {
-      const parts = menuParts(m.pushName || 'Guest');
-      for (const part of parts) await reply(part);
+      const chunks = menuChunks(m.pushName || 'Guest');
+      for (const part of chunks) await reply(part);
+      await reply(`📢 Follow: ${CHANNEL_LINK}`);
     } catch (_) {
-      await reply('Menu is ready. Type .menu ai');
+      await reply(`Menu is ready. Type .menu ai\n${CHANNEL_LINK}`);
     }
   }
 });
