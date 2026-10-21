@@ -153,12 +153,30 @@ function allCaption() {
   );
 }
 
+async function downloadImage(imageUrl) {
+  if (!imageUrl) return null;
+  try {
+    const res = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 8000,
+      maxRedirects: 3,
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      validateStatus: (s) => s >= 200 && s < 300
+    });
+    const buf = Buffer.from(res.data || []);
+    return buf.length > 200 ? buf : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function prepareThumb(conn, imageUrl) {
   try {
+    const buf = await downloadImage(imageUrl);
+    if (!buf) return null;
     const { prepareWAMessageMedia } = require('@whiskeysockets/baileys');
-    const res = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
     const media = await prepareWAMessageMedia(
-      { image: Buffer.from(res.data) },
+      { image: buf },
       { upload: conn.waUploadToServer }
     );
     return media.imageMessage || null;
@@ -226,12 +244,23 @@ async function sendInteractiveHub(conn, from, mek, m, pushName, total, imageUrl)
   }
 }
 
-async function sendImageCaption(conn, from, imageUrl, caption, sender) {
+async function sendMenuMessage(conn, from, caption, sender, imageUrl) {
+  const buf = await downloadImage(imageUrl);
+  if (buf) {
+    try {
+      await conn.sendMessage(from, {
+        image: buf,
+        caption,
+        contextInfo: ctxInfo(sender)
+      }, { quoted: fakevCard });
+      return true;
+    } catch (_) {}
+  }
   await conn.sendMessage(from, {
-    image: { url: imageUrl },
-    caption,
+    text: caption,
     contextInfo: ctxInfo(sender)
   }, { quoted: fakevCard });
+  return true;
 }
 
 cmd({
@@ -286,24 +315,29 @@ cmd({
       const key = arg.replace(/^\.+/, '');
       const caption = categoryCaption(key);
       try {
-        await sendImageCaption(conn, from, imageUrl, caption, m.sender);
+        await sendMenuMessage(conn, from, caption, m.sender, imageUrl);
       } catch (_) {
         await reply(caption);
       }
       return;
     }
 
-    const sent = await sendInteractiveHub(conn, from, mek, m, pushName, total, imageUrl);
-    if (sent) return;
+    const sentInteractive = await sendInteractiveHub(conn, from, mek, m, pushName, total, null);
+    if (sentInteractive) return;
 
     const caption = hubCaption(pushName, total);
     try {
-      await sendImageCaption(conn, from, imageUrl, caption, m.sender);
+      await sendMenuMessage(conn, from, caption, m.sender, imageUrl);
     } catch (_) {
       await reply(caption);
     }
   } catch (err) {
     console.error('Menu error:', err);
-    reply(`Menu failed: ${err.message}`);
+    const fallback = hubCaption(m.pushName || 'Guest', groupedCommands().total);
+    try {
+      await reply(fallback);
+    } catch (_) {
+      await reply('Menu is ready. Type .menu ai or .menu all');
+    }
   }
 });
