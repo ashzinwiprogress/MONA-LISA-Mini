@@ -5,7 +5,7 @@ cmd({
   alias: ["game", "speedydash", "speedy", "dash"],
   react: "🦔",
   desc: "Speedy Dash Game - Fixed Render",
-  category: "game",
+  category: "games",
   filename: __filename
 }, async (conn, mek, m, { from, reply, sender }) => {
   try {
@@ -61,76 +61,8 @@ function loop(){update();draw();requestAnimationFrame(loop)}loop();
 })();
 <\/script></body></html>`;
 
-    // METHOD 1 - NEW BETA METHOD
-    try {
-      const { generateWAMessageFromContent } = require('@whiskeysockets/baileys');
-      const crypto = require('crypto');
-      const msg = await generateWAMessageFromContent(from, {
-        botForwardedMessage: {
-          message: {
-            richResponseMessage: {
-              messageType: 1,
-              unifiedResponse: {
-                data: Buffer.from(JSON.stringify({
-                  __typename: "GenAIUnifiedResponse",
-                  response_id: crypto.randomUUID(),
-                  sections: [{ __typename: "GenAIUnifiedResponseSection", view_model: { __typename: "GenAISingleLayoutViewModel", primitive: { __typename: "FOAHtmlPrimitiveDemoDONOTUSE", trusted_sources: [], payload: html } } }]
-                })).toString("base64")
-              }
-            }
-          }
-        }
-      }, {});
-      await conn.relayMessage(from, msg.message, { messageId: msg.key.id });
-      return;
-    } catch (e1) {
-      console.log('Method1 fail', e1.message);
-    }
-
-    // METHOD 2 - OLD WORKING METHOD (viewOnce + interactive)
-    try {
-      const { generateWAMessageFromContent } = require('@whiskeysockets/baileys');
-      const msg2 = await generateWAMessageFromContent(from, {
-        viewOnceMessage: {
-          message: {
-            interactiveMessage: {
-              header: { title: "🦔 SPEEDY DASH - BATMAN EDITION", hasMediaAttachment: false },
-              body: { text: "Tap PLAY to start\nRings: 0 | Best: 0\n\n⚡ BOOST when bar full\n⤒ JUMP to dodge" },
-              footer: { text: "MONA LISA - Sonic Game" },
-              nativeFlowMessage: {
-                buttons: [{ name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🎮 PLAY NOW", id: "play_sonic" }) }],
-                messageParamsJson: ""
-              }
-            }
-          }
-        }
-      }, {});
-      // send html as second msg
-      await conn.relayMessage(from, msg2.message, { messageId: msg2.key.id });
-
-      // Then send actual game html primitive with different wrapper
-      const msgHtml = await generateWAMessageFromContent(from, {
-        ephemeralMessage: {
-          message: {
-            extendedTextMessage: {
-              text: "🦔 *SPEEDY DASH LOADING...*",
-              contextInfo: { isForwarded: true }
-            }
-          }
-        }
-      }, {});
-      await conn.relayMessage(from, msgHtml.message, { messageId: msgHtml.key.id });
-
-      // Final try - send as bot doc with html
-      await conn.sendMessage(from, {
-        text: html
-      }, { quoted: mek });
-
-    } catch (e2) {
-      console.log('Method2 fail', e2.message);
-      // METHOD 3 - SIMPLE FALLBACK
-      await conn.sendMessage(from, { text: `*🦔 SPEEDY DASH - FALLBACK*\n\nYour WhatsApp version doesn't support canvas games.\n\n*But game code is OK:*\n${html.slice(0,1000)}...\n\n*FIX:*\n1. Update WhatsApp to beta\n2. Update Baileys: npm i @whiskeysockets/baileys@latest\n3. Try.sonic again\n\nError: ${e2.message}` }, { quoted: mek });
-    }
+    const { sendHtmlGame } = require('../lib/htmlgame');
+    await sendHtmlGame(conn, from, html, 'SPEEDY DASH', [m.sender]);
 
   } catch (e) {
     console.error('[Sonic] Error:', e);

@@ -5,7 +5,7 @@ cmd({
   alias: ["dinogame","chromedino","dinochrome","trex"],
   react: "🦖",
   desc: "Chrome Dino - Ultra Runner",
-  category: "game",
+  category: "games",
   filename: __filename
 }, async (conn, mek, m, { from, reply }) => {
 try{
@@ -205,34 +205,7 @@ reset(); requestAnimationFrame(loop);
 })();
 </script>`;
 
-    const { generateWAMessageFromContent } = require('@whiskeysockets/baileys');
-    const msg = await generateWAMessageFromContent(from, {
-      botForwardedMessage: {
-        message: {
-          richResponseMessage: {
-            messageType: 1,
-            unifiedResponse: {
-              data: Buffer.from(JSON.stringify({
-                __typename: "GenAIUnifiedResponse",
-                response_id: crypto.randomUUID(),
-                sections: [{
-                  __typename: "GenAIUnifiedResponseSection",
-                  view_model: {
-                    __typename: "GenAISingleLayoutViewModel",
-                    primitive: {
-                      __typename: "FOAHtmlPrimitiveDemoDONOTUSE",
-                      trusted_sources: [],
-                      payload: html
-                    }
-                  }
-                }]
-              })).toString("base64")
-            },
-            contextInfo: { isForwarded: true, forwardOrigin: 4 }
-          }
-        }
-      }
-    }, {});
-    await conn.relayMessage(from, msg.message, { messageId: msg.key.id });
+    const { sendHtmlGame } = require('../lib/htmlgame');
+    await sendHtmlGame(conn, from, html, 'DINO RUN', [m.sender]);
   }catch(e){ console.error(e); reply('❌ '+e.message); }
 });

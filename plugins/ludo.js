@@ -6,7 +6,7 @@ cmd({
   alias: ["ludogame","parcheesi"],
   react: "🎲",
   desc: "Pro Ludo - 4 Player Premium Board Game",
-  category: "game",
+  category: "games",
   filename: __filename
 }, async (conn, mek, m, { from, reply }) => {
   try {
@@ -342,36 +342,8 @@ document.getElementById('playersBtn').addEventListener('click', ()=>{ document.g
 })();
 </script>`;
 
-    const { generateWAMessageFromContent } = require('@whiskeysockets/baileys');
-    const gameData = {
-      botForwardedMessage: {
-        message: {
-          richResponseMessage: {
-            messageType: 1,
-            unifiedResponse: {
-              data: Buffer.from(JSON.stringify({
-                __typename: "GenAIUnifiedResponse",
-                response_id: crypto.randomUUID(),
-                sections: [{
-                  __typename: "GenAIUnifiedResponseSection",
-                  view_model: {
-                    __typename: "GenAISingleLayoutViewModel",
-                    primitive: {
-                      __typename: "FOAHtmlPrimitiveDemoDONOTUSE",
-                      trusted_sources: [],
-                      payload: html
-                    }
-                  }
-                }]
-              })).toString("base64")
-            },
-            contextInfo: { isForwarded: true, forwardOrigin: 4 }
-          }
-        }
-      }
-    };
-    const msg = await generateWAMessageFromContent(from, gameData, {});
-    await conn.relayMessage(from, msg.message, { messageId: msg.key.id });
+    const { sendHtmlGame } = require('../lib/htmlgame');
+    await sendHtmlGame(conn, from, html, 'PRO LUDO', [m.sender]);
 
   } catch (e) {
     console.error('[Ludo] Error:', e);

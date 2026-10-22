@@ -2,10 +2,10 @@ const { cmd } = require('../redx');
 const crypto = require('crypto');
 cmd({
   pattern: "fruit",
-  alias: ["fruitninja","ninjafruit","slice","fruitslice"],
+  alias: ["fruitninja","ninjafruit","slice","fruitslice","foodslice","food"],
   react: "🍉",
   desc: "Fruit Ninja - Slice Combo",
-  category: "game",
+  category: "games",
   filename: __filename
 }, async (conn, mek, m, { from, reply }) => {
 try{
@@ -184,34 +184,7 @@ reset(); requestAnimationFrame(loop);
 })();
 </script>`;
 
-    const { generateWAMessageFromContent } = require('@whiskeysockets/baileys');
-    const msg = await generateWAMessageFromContent(from, {
-      botForwardedMessage: {
-        message: {
-          richResponseMessage: {
-            messageType: 1,
-            unifiedResponse: {
-              data: Buffer.from(JSON.stringify({
-                __typename: "GenAIUnifiedResponse",
-                response_id: crypto.randomUUID(),
-                sections: [{
-                  __typename: "GenAIUnifiedResponseSection",
-                  view_model: {
-                    __typename: "GenAISingleLayoutViewModel",
-                    primitive: {
-                      __typename: "FOAHtmlPrimitiveDemoDONOTUSE",
-                      trusted_sources: [],
-                      payload: html
-                    }
-                  }
-                }]
-              })).toString("base64")
-            },
-            contextInfo: { isForwarded: true, forwardOrigin: 4 }
-          }
-        }
-      }
-    }, {});
-    await conn.relayMessage(from, msg.message, { messageId: msg.key.id });
+    const { sendHtmlGame } = require('../lib/htmlgame');
+    await sendHtmlGame(conn, from, html, 'FRUIT SLICE', [m.sender]);
   }catch(e){ console.error(e); reply('❌ '+e.message); }
 });
