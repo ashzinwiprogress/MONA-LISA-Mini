@@ -1,6 +1,7 @@
 const { cmd, commands } = require('../redx');
 const moment = require('moment-timezone');
 const axios = require('axios');
+const os = require('os');
 const config = require('../config');
 const { fakevCard } = require('../lib/fakevCard');
 const { pick } = require('../lib/responses');
@@ -8,10 +9,13 @@ const { pick } = require('../lib/responses');
 const bootTime = Date.now();
 const CHANNEL_LINK = config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05';
 const CHANNEL_JID = config.CHANNEL_JID || '120363431455356251@newsletter';
+const HOST = 'https://progresstech.ing.ng';
+const VERSION = '2.0.0';
 const PREFIX = () => config.PREFIX || '.';
 
 const SECTIONS = [
   { key: 'ai', title: '🧠 AI & INTELLIGENCE', match: ['ai', 'progresstech ai', 'progresstech-ai'] },
+  { key: 'tools-pt', title: '🔮 PROGRESS TECH TOOLS', match: ['progresstech tools'] },
   { key: 'image', title: '🎨 IMAGE STUDIO', match: ['sticker', 'image'] },
   { key: 'video', title: '🎬 VIDEO STUDIO', match: ['video'] },
   { key: 'music', title: '🎵 MUSIC STUDIO', match: ['music', 'song'] },
@@ -47,8 +51,24 @@ function uptime() {
   const d = Math.floor(sec / 86400);
   const h = Math.floor((sec % 86400) / 3600);
   const m = Math.floor((sec % 3600) / 60);
-  if (d) return `${d}d ${h}h ${m}m`;
-  return `${h}h ${m}m`;
+  return `${d}d ${h}h ${m}m`;
+}
+
+function ramBar() {
+  const total = os.totalmem();
+  const used = total - os.freemem();
+  const pct = total ? Math.min(100, Math.round((used / total) * 100)) : 0;
+  const filled = Math.round(pct / 10);
+  return `[${'█'.repeat(filled)}${'░'.repeat(10 - filled)}] ${pct}%`;
+}
+
+function smallCaps(s) {
+  const map = {
+    a: 'ᴀ', b: 'ʙ', c: 'ᴄ', d: 'ᴅ', e: 'ᴇ', f: 'ғ', g: 'ɢ', h: 'ʜ', i: 'ɪ',
+    j: 'ᴊ', k: 'ᴋ', l: 'ʟ', m: 'ᴍ', n: 'ɴ', o: 'ᴏ', p: 'ᴘ', q: 'ǫ', r: 'ʀ',
+    s: 's', t: 'ᴛ', u: 'ᴜ', v: 'ᴠ', w: 'ᴡ', x: 'x', y: 'ʏ', z: 'ᴢ'
+  };
+  return String(s || '').split('').map((ch) => map[ch.toLowerCase()] || ch).join('');
 }
 
 function norm(s) {
@@ -87,15 +107,26 @@ function ctxInfo(sender) {
   };
 }
 
-function block(title, line) {
-  return `╭━━〔 ${title} 〕\n│ ${line}\n╰━━━━━━━━━━━━━━━━━━`;
+function hallBox(title, lines) {
+  const body = lines.map((l) => `│ ${l}`).join('\n');
+  return `╭━━〔 ${title} 〕\n${body}\n╰━━━━━━━━━━━━━━━━━━`;
 }
 
-function banner() {
+function crownBox(pushName, total) {
+  const pre = PREFIX();
+  const mode = smallCaps(String(config.MODE || 'public').toLowerCase());
   return (
-    `_👑 ✦ 𝐌𝐎𝐍𝐀 𝐋𝐈𝐒𝐀 V2🤭 ✦ 👑_\n` +
-    `   ᴍɪɴɪ ʙᴏᴛ • ʟᴇɢᴇɴᴅᴀʀʏ ᴇᴅɪᴛɪᴏɴ\n` +
-    `   ${pick(TAGLINES)}`
+    `┏❒ 👑 ✦ 𝐌𝐎𝐍𝐀 𝐋𝐈𝐒𝐀 V2🤭 ✦ 👑 ❒\n` +
+    `   ${pick(TAGLINES)}\n` +
+    `┃ *Usᴇʀ*: ${pushName}\n` +
+    `┃ *Mᴏᴅᴇ*: ${mode}\n` +
+    `┃ *Hᴏsᴛ*: ${HOST}\n` +
+    `┃ *Pʀᴇғɪx*: [ ${pre} ]\n` +
+    `┃ *Cᴏᴍᴍᴀɴᴅs*: ${total}\n` +
+    `┃ *Vᴇʀsɪᴏɴ*: ${VERSION}\n` +
+    `┃ *Rᴀᴍ*: ${ramBar()}\n` +
+    `┃ \n` +
+    `┗❒`
   );
 }
 
@@ -103,32 +134,22 @@ function statusBox(pushName, total) {
   const pre = PREFIX();
   const time = moment().tz('Africa/Lagos').format('HH:mm:ss');
   const date = moment().tz('Africa/Lagos').format('dddd, Do MMMM YYYY');
-  return (
-    `╭━━〔 ⚜️ STATUS 〕\n` +
-    `│ 👤 User     : ${pushName}\n` +
-    `│ 👑 Owner    : ${config.OWNER_NAME}\n` +
-    `│ ⚡ Prefix    : ${pre}\n` +
-    `│ 📜 Commands  : ${total}\n` +
-    `│ ⏱️ Uptime    : ${uptime()}\n` +
-    `│ 🕰️ Time      : ${time}\n` +
-    `│ 📅 Date      : ${date}\n` +
-    `╰━━━━━━━━━━━━━━━━━━`
-  );
+  return hallBox('⚜️ STATUS', [
+    `👤 User     : ${pushName}`,
+    `👑 Owner    : ${config.OWNER_NAME}`,
+    `⚡ Prefix    : ${pre}`,
+    `📜 Commands  : ${total}`,
+    `⏱️ Uptime    : ${uptime()}`,
+    `🕰️ Time      : ${time}`,
+    `📅 Date      : ${date}`
+  ]);
 }
 
 function channelBox() {
-  return block('📡 STAY CONNECTED', `📢 ${CHANNEL_LINK}  ·  🥰 Follow for updates`);
-}
-
-function footerLine() {
-  return (
-    `┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n` +
-    `🥰 *𝐌𝐎𝐍𝐀 𝐋𝐈𝐒𝐀 V2* 🤭 · Powered by ${config.OWNER_NAME}`
-  );
-}
-
-function cmdLine(list, pre) {
-  return list.map((p) => `◈ ${pre}${p}`).join('  ');
+  return hallBox('📡 STAY CONNECTED', [
+    `📢 ${CHANNEL_LINK}`,
+    `🥰 Follow for updates & new features`
+  ]);
 }
 
 function findSection(key) {
@@ -144,24 +165,21 @@ function buildMenu(pushName, onlyKey) {
     : SECTIONS;
   const boxes = sections
     .filter((s) => grouped[s.key]?.length)
-    .map((s) => block(s.title, cmdLine(grouped[s.key], pre)));
+    .map((s) => hallBox(s.title, grouped[s.key].map((p) => `◈ ${pre}${p}`)));
 
   if (onlyKey && !boxes.length) {
-    const names = SECTIONS.filter((s) => grouped[s.key]?.length).map((s) => `${pre}menu ${s.key}`).join('  ');
-    return `Unknown hall "${onlyKey}".\nOpen: ${names}\n${pre}menu`;
+    const names = SECTIONS.filter((s) => grouped[s.key]?.length).map((s) => `${pre}menu ${s.key}`).join('\n');
+    return `Unknown hall "${onlyKey}".\n\nOpen a hall:\n${names}\n\n${pre}menu`;
   }
 
   return [
-    banner(),
-    '',
+    crownBox(pushName, total),
     statusBox(pushName, total),
-    '',
     boxes.join('\n\n'),
-    '',
     channelBox(),
-    '',
-    footerLine()
-  ].join('\n').trim();
+    '┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈',
+    `🥰 *MONA LISA V2* 🤭 · Powered by ${config.OWNER_NAME}`
+  ].filter(Boolean).join('\n\n');
 }
 
 async function downloadImage(imageUrl) {
@@ -240,7 +258,7 @@ async function sendOneMenu(conn, from, caption, sender, imageUrl) {
       ...(buf ? {
         externalAdReply: {
           title: '🥰 MONA LISA V2 🤭',
-          body: 'Tap to follow the official channel',
+          body: 'Official channel · Progress Tech',
           thumbnail: buf,
           mediaType: 1,
           sourceUrl: CHANNEL_LINK,
