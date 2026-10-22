@@ -101,18 +101,18 @@ cmd({
     await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
     reply(`*🍌 Generating your image... Please wait ☺️*`);
 
-    let imageUrl = null;
+    let generatedUrl = null;
     try {
       const { data } = await axios.get(`https://api.omegatech.app/api/ai/notgept-Nano-banana?action=generate&prompt=${encodeURIComponent(q)}`, { timeout: 90000 });
-      imageUrl = data?.data?.image || data?.image || data?.data?.url;
+      generatedUrl = data?.data?.image || data?.image || data?.data?.url;
     } catch (_) {}
-    if (!imageUrl) {
+    if (!generatedUrl) {
       const { data } = await axios.get(`https://api.omegatech.app/api/ai/nano-banana-pro?prompt=${encodeURIComponent(q)}`, { timeout: 60000 });
-      imageUrl = data?.image || data?.data?.image || data?.url;
+      generatedUrl = data?.image || data?.data?.image || data?.url;
     }
 
-    if (imageUrl) {
-      const imgBuf = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 60000 });
+    if (generatedUrl) {
+      const imgBuf = await axios.get(generatedUrl, { responseType: 'arraybuffer', timeout: 60000 });
       await conn.sendMessage(from, {
         image: Buffer.from(imgBuf.data),
         caption: `*Nano-Banana*\nPrompt: ${q}\n\nPowered by Progress Tech`
