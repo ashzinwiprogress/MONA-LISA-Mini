@@ -25,8 +25,18 @@ function emptyResult(source) {
   return { title: '', author: '', source: source || 'Unknown', thumbnail: '', videos: [], audios: [], photos: [] };
 }
 
+function absUrl(u, base) {
+  if (typeof u !== 'string') return '';
+  const s = u.trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('//')) return `https:${s}`;
+  if (base && s.startsWith('/')) return `${String(base).replace(/\/$/, '')}${s}`;
+  return s;
+}
+
 function isHttp(u) {
-  return typeof u === 'string' && /^https?:\/\//i.test(u) && u.length < 2000;
+  return typeof u === 'string' && /^https?:\/\//i.test(u) && u.length < 12000;
 }
 
 function looksVideo(u) {
@@ -60,7 +70,7 @@ function detectSource(url) {
 }
 
 function extractUrl(text) {
-  const m = String(text || '').match(/https?:\/\/[^\s<>"'`]+/i);
+  const m = String(text || '').replace(/&amp;/g, '&').match(/https?:\/\/[^\s<>"'`]+/i);
   return m ? m[0].replace(/[.,;!?)]+$/, '') : null;
 }
 
@@ -174,14 +184,29 @@ async function sendInteractiveMedia(conn, chatId, result, sender, prefix) {
   }
 }
 
+function refererFor(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host.includes('tikwm') || host.includes('tiktok')) return 'https://www.tikwm.com/';
+    if (host.includes('facebook') || host.includes('fbcdn')) return 'https://www.facebook.com/';
+    if (host.includes('instagram') || host.includes('cdninstagram')) return 'https://www.instagram.com/';
+    if (host.includes('twitter') || host.includes('twimg') || host === 'x.com') return 'https://x.com/';
+    if (host.includes('youtube') || host.includes('googlevideo')) return 'https://www.youtube.com/';
+    return `https://${host}/`;
+  } catch {
+    return 'https://www.google.com/';
+  }
+}
+
 async function fetchBuffer(url) {
   const res = await axios.get(url, {
     responseType: 'arraybuffer',
     timeout: 180000,
     maxRedirects: 5,
+    maxContentLength: 80 * 1024 * 1024,
     headers: {
       'User-Agent': UA,
-      Referer: 'https://www.tikwm.com/',
+      Referer: refererFor(url),
       Accept: '*/*'
     }
   });
@@ -229,15 +254,18 @@ async function sendMediaFile(conn, chatId, url, type, title, author, source) {
 function fromTikwm(data, source) {
   const d = data?.data || data;
   if (!d || (data?.code !== 0 && data?.code !== undefined && !d.play && !d.hdplay)) return null;
+  const base = 'https://www.tikwm.com';
   const r = emptyResult(source || 'TikTok');
   r.title = d.title || d.desc || r.title;
   r.author = d.author?.nickname || d.author?.unique_id || d.author || '';
-  r.thumbnail = d.cover || d.origin_cover || d.ai_dynamic_cover || '';
+  r.thumbnail = absUrl(d.cover || d.origin_cover || d.ai_dynamic_cover || '', base);
   r.duration = d.duration ? `${d.duration}s` : '';
-  pushUnique(r.videos, { url: d.hdplay || d.play, quality: d.hdplay ? 'HD' : 'SD' });
-  if (d.play && d.hdplay && d.play !== d.hdplay) pushUnique(r.videos, { url: d.play, quality: 'SD' });
-  pushUnique(r.videos, { url: d.wmplay, quality: 'Watermark' });
-  pushUnique(r.audios, { url: d.music, format: 'mp3' });
+  const hd = absUrl(d.hdplay || d.play, base);
+  const sd = absUrl(d.play, base);
+  pushUnique(r.videos, { url: hd, quality: d.hdplay ? 'HD' : 'SD' });
+  if (sd && hd && sd !== hd) pushUnique(r.videos, { url: sd, quality: 'SD' });
+  pushUnique(r.videos, { url: absUrl(d.wmplay, base), quality: 'Watermark' });
+  pushUnique(r.audios, { url: absUrl(d.music, base), format: 'mp3' });
   if (!r.videos.length && !r.audios.length) return null;
   return r;
 }

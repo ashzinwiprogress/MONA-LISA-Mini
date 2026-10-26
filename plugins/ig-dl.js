@@ -12,7 +12,9 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, reply, args, q }) => {
     try {
-        const url = q || m.quoted?.text;
+        const raw = String(q || m.quoted?.text || '');
+        const found = raw.replace(/&amp;/g, '&').match(/https?:\/\/[^\s<>"'`]+/i);
+        const url = found ? found[0].replace(/[.,;!?)]+$/, '') : raw.trim();
         if (!url || !url.includes("instagram.com")) {
             return reply("❌ Please provide/reply to an Instagram link");
         }

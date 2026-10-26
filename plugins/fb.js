@@ -4,7 +4,7 @@ const axios = require('axios');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 function extractUrl(text) {
-  const m = String(text || '').match(/https?:\/\/[^\s<>"'`]+/i);
+  const m = String(text || '').replace(/&amp;/g, '&').match(/https?:\/\/[^\s<>"'`]+/i);
   return m ? m[0].replace(/[.,;!?)]+$/, '') : null;
 }
 

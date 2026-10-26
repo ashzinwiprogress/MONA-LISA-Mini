@@ -29,10 +29,12 @@ const waitLocks = new Set();
 function extractCode(text) {
   if (!text) return null;
   const s = String(text);
-  let m = s.match(/(?:code|otp|verify|verification)[^\d]{0,24}(\d{4,8})/i);
-  if (m) return m[1];
-  m = s.match(/\b(\d{4,8})\b/);
-  return m ? m[1] : null;
+  const labeled = s.match(/(?:code|otp|pin|verify|verification|пароль|код)[^\d]{0,24}(\d{4,8})/i);
+  if (labeled) return labeled[1];
+  const codes = [...s.matchAll(/\b(\d{4,8})\b/g)]
+    .map((x) => x[1])
+    .filter((c) => !/^20\d{2}$/.test(c) && !/^0+$/.test(c));
+  return codes.length ? codes[codes.length - 1] : null;
 }
 
 function digits(n) {
@@ -94,7 +96,10 @@ function matchOtp(otp, target) {
   const num = digits(otp.number || otp.phone);
   const tgt = digits(target);
   if (!num || !tgt) return false;
-  return num === tgt || num.endsWith(tgt) || tgt.endsWith(num);
+  if (num === tgt) return true;
+  const longer = num.length >= tgt.length ? num : tgt;
+  const shorter = num.length >= tgt.length ? tgt : num;
+  return shorter.length >= 8 && longer.endsWith(shorter);
 }
 
 function otpFromItem(item) {
