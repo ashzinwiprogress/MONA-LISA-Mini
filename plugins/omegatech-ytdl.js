@@ -114,7 +114,36 @@ async function getYTData(url) {
         }
         return d;
     } catch (e) {
-        console.error('[ytdl] Omegatech failed, using fallback:', e.message);
+        console.error('[ytdl] ytultra failed:', e.message);
+        try {
+            const { data } = await axios.get(
+                `https://api.omegatech.app/api/download/youtube?action=download&url=${encodeURIComponent(url)}`,
+                { timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' } }
+            );
+            const d = data?.data || data;
+            if (d && d.url) {
+                const meta = await getVideoMeta(url);
+                const title = d.title || (meta && meta.title) || 'YouTube media';
+                const thumbnail = d.thumbnail || (meta && meta.thumbnail) || '';
+                const type = String(d.type || '').toLowerCase();
+                const mp4 = [];
+                const mp3 = [];
+                if (type === 'mp3' || /\.mp3/i.test(d.url)) {
+                    mp3.push({ quality: d.quality || '128kbps', format: 'mp3', url: d.url, filename: `${title}.mp3` });
+                } else {
+                    mp4.push({ quality: d.quality || 'HD', format: 'mp4', url: d.url, filename: `${title}.mp4` });
+                }
+                const extra = await getFallbackData(url).catch(() => ({ mp3: [], mp4: [] }));
+                return {
+                    title,
+                    thumbnail,
+                    mp4: mp4.concat(extra.mp4 || []).filter((x, i, a) => a.findIndex((y) => y.url === x.url) === i),
+                    mp3: mp3.concat(extra.mp3 || []).filter((x, i, a) => a.findIndex((y) => y.url === x.url) === i)
+                };
+            }
+        } catch (e2) {
+            console.error('[ytdl] youtube endpoint failed:', e2.message);
+        }
         return getFallbackData(url);
     }
 }
@@ -258,16 +287,32 @@ async function handleYT(conn, mek, m, { from, q, reply, prefix }, mode) {
         }
 
         await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
-        await reply('⏳ Fetching YouTube data...');
+        await reply('Fetching YouTube data...');
         const data = await getYTData(url);
         ytCache.set(m.chat, { data, url, timestamp: Date.now() });
 
         if (mode === 'auto') {
-            return reply(typeMenu(data, url, prefixStr));
+            const hasVideo = (data.mp4 || []).length;
+            const hasAudio = (data.mp3 || []).length;
+            if (hasVideo) {
+                await downloadAndSend(conn, from, data, 'video', 0, mek, reply);
+            } else if (hasAudio) {
+                await downloadAndSend(conn, from, data, 'audio', 0, mek, reply);
+            } else {
+                return reply('No downloadable YouTube media found.');
+            }
+            if (hasVideo && hasAudio) {
+                await reply(typeMenu(data, url, prefixStr) + '\n\nBest video was sent. Use the commands above for other formats.');
+            }
+            return;
         }
-        return reply(qualityMenu(data, mode, url, prefixStr));
+
+        const list = mediaListOf(data, mode);
+        if (!list.length) return reply(`No ${mode} formats found. Try the other type.`);
+        await downloadAndSend(conn, from, data, mode, 0, mek, reply);
+        if (list.length > 1) await reply(qualityMenu(data, mode, url, prefixStr));
     } catch (e) {
         console.error('[ytdl]', e.message);
-        reply(`❌ YouTube error: ${e.message}`);
+        reply(`YouTube error: ${e.message}`);
     }
 }

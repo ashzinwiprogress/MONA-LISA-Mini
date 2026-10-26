@@ -441,7 +441,12 @@ cmd({
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
         await reply('*⏳ Fetching from X...*');
 
-        const res = await apiGet(`/api/download/X?action=download&url=${encodeURIComponent(url)}`, 90000);
+        let res;
+        try {
+            res = await apiGet(`/api/download/X?action=download&url=${encodeURIComponent(url)}`, 90000);
+        } catch (e) {
+            res = await apiGet(`/api/download/youtube?action=download&url=${encodeURIComponent(url)}`, 90000);
+        }
         const d = res.data || res;
 
         // Try hard to find a playable/downloadable media URL.

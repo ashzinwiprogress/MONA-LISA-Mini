@@ -17,28 +17,48 @@ cmd({
             return reply("❌ Please provide/reply to an Instagram link");
         }
 
-        // Show processing reaction
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        // Fetch from API
-        const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/igdl?url=${encodeURIComponent(url)}`;
-        const response = await axios.get(apiUrl);
+        const caption = `*_ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ_*\nPowered by Progress Tech`;
+        const endpoints = [
+            `https://api-aswin-sparky.koyeb.app/api/downloader/igdl?url=${encodeURIComponent(url)}`,
+            `https://rest-lily.vercel.app/api/downloader/igdl?url=${encodeURIComponent(url)}`,
+            `https://jawad-tech.vercel.app/downloader?url=${encodeURIComponent(url)}`,
+            `https://bk9.fun/download/instagram?url=${encodeURIComponent(url)}`,
+            `https://api.omegatech.app/api/download/youtube?action=download&url=${encodeURIComponent(url)}`
+        ];
 
-        if (!response.data?.status || !response.data.data?.length) {
-            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply("Failed to fetch media. Invalid link or private content.");
+        let items = [];
+        for (const apiUrl of endpoints) {
+            try {
+                const response = await axios.get(apiUrl, { timeout: 45000, headers: { Accept: 'application/json' } });
+                const data = response.data;
+                if (Array.isArray(data?.data) && data.data.length) {
+                    items = data.data.map((x) => ({ url: x.url || x, type: x.type || (/\.mp4/i.test(x.url || x) ? 'video' : 'image') }));
+                } else if (Array.isArray(data?.result) && data.result.length) {
+                    items = data.result.map((x) => {
+                        const u = typeof x === 'string' ? x : (x.url || x.link);
+                        return { url: u, type: /\.mp4|video/i.test(u) ? 'video' : 'image' };
+                    });
+                } else if (data?.BK9?.[0]?.url) {
+                    items = data.BK9.map((x) => ({ url: x.url, type: 'video' }));
+                } else if (data?.data?.url) {
+                    items = [{ url: data.data.url, type: /mp3|audio/i.test(data.data.type || '') ? 'audio' : 'video' }];
+                }
+                if (items.length) break;
+            } catch (_) {}
         }
 
-        // Send all media items
-        for (const item of response.data.data) {
-            await conn.sendMessage(from, {
-                [item.type === 'video' ? 'video' : 'image']: { url: item.url },
-                caption: `‎*_ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ_*
+        if (!items.length) {
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+            return reply('Failed to fetch media. Invalid link or private content.');
+        }
 
-‎╔ஜ۩▒█ 🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭 █▒۩ஜ╗
-‎*|* 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 *PROGRESS TECH* 
-‎*╰━━━━━━━━━━━━━━━━━━⊷*
-‎`
+        for (const item of items.slice(0, 6)) {
+            const kind = item.type === 'video' ? 'video' : (item.type === 'audio' ? 'audio' : 'image');
+            await conn.sendMessage(from, {
+                [kind]: { url: item.url },
+                caption
             }, { quoted: fakevCard });
         }
 

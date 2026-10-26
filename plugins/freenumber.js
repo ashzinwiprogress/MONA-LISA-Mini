@@ -2,235 +2,424 @@ const { cmd } = require('../redx');
 const axios = require('axios');
 
 const API = 'https://api.omegatech.app/api/tools/Temp-number';
+const OWNER_NAME = 'Progress Tech';
+const OWNER_PHONE = '237698830792';
+const OWNER_WA = `https://wa.me/${OWNER_PHONE}`;
+const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05';
+const BRAND = 'Powered by Progress Tech';
+
+const PLATFORMS = [
+  'WhatsApp',
+  'Google / Gmail',
+  'Facebook',
+  'Instagram',
+  'TikTok',
+  'Telegram',
+  'X / Twitter',
+  'BIGO LIVE',
+  'PayPal',
+  'Huawei',
+  'Viber',
+  'Snapchat'
+];
+
+const numberCache = new Map();
+const waitLocks = new Set();
 
 function extractCode(text) {
   if (!text) return null;
-  let m = String(text).match(/(?:code|otp|verify)[^\d]{0,20}(\d{4,8})|\b(\d{4,8})\b/i);
-  if (m) return (m[1] || m[2] || '').replace(/\D/g,'');
-  let m2 = String(text).match(/\b\d{4,8}\b/);
-  return m2? m2[0] : null;
+  const s = String(text);
+  let m = s.match(/(?:code|otp|verify|verification)[^\d]{0,24}(\d{4,8})/i);
+  if (m) return m[1];
+  m = s.match(/\b(\d{4,8})\b/);
+  return m ? m[1] : null;
 }
 
-async function fetchAPI(action, limit=20) {
-  const { data } = await axios.get(API, { params: { action, limit }, timeout: 30000 });
+function digits(n) {
+  return String(n || '').replace(/[^\d]/g, '');
+}
+
+function displayNumber(n) {
+  const d = digits(n);
+  return d ? `+${d}` : String(n || '');
+}
+
+function countryKey(name) {
+  return String(name || 'Unknown').trim();
+}
+
+function countrySlug(name) {
+  return countryKey(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
+}
+
+async function fetchAPI(action, limit = 80) {
+  const { data } = await axios.get(API, {
+    params: { action, limit },
+    timeout: 30000,
+    headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' }
+  });
   return data?.data || data?.result || data;
 }
 
-cmd({
-  pattern: "tempnumber",
-  alias: ["tnumber","tempnum","temp-number","otpnumber","fakenumber","smsotp","tempn"],
-  react: "📱",
-  desc: "Temp numbers + OTPs + AUTO WAIT - /api/tools/Temp-number",
-  category: "tools",
-  filename: __filename
-}, async (conn, mek, m, { from, q, reply }) => {
+function normalizeNumbers(raw) {
+  const list = raw?.numbers || raw?.result || raw?.data || (Array.isArray(raw) ? raw : []);
+  const out = [];
+  const seen = new Set();
+  for (const n of Array.isArray(list) ? list : []) {
+    const num = digits(n.number || n.phone);
+    if (!num || seen.has(num)) continue;
+    seen.add(num);
+    out.push({
+      id: n.id || num,
+      number: num,
+      country: countryKey(n.country || 'Unknown'),
+      flag: n.flag || '',
+      countryCode: String(n.countryCode || '').replace(/\D/g, '')
+    });
+  }
+  return out;
+}
+
+function groupCountries(numbers) {
+  const map = new Map();
+  for (const n of numbers) {
+    const key = n.country;
+    if (!map.has(key)) map.set(key, { name: key, flag: n.flag || '', code: n.countryCode || '', numbers: [] });
+    map.get(key).numbers.push(n);
+  }
+  return [...map.values()].filter((c) => c.numbers.length > 0).sort((a, b) => b.numbers.length - a.numbers.length);
+}
+
+function matchOtp(otp, target) {
+  const num = digits(otp.number || otp.phone);
+  const tgt = digits(target);
+  if (!num || !tgt) return false;
+  return num === tgt || num.endsWith(tgt) || tgt.endsWith(num);
+}
+
+function otpFromItem(item) {
+  return String(item.otp || extractCode(item.message || item.text || '') || '').replace(/\D/g, '');
+}
+
+async function sendButtons(conn, from, body, buttons, footer) {
+  await conn.relayMessage(from, {
+    interactiveMessage: {
+      header: { title: 'Free Virtual Number', hasMediaAttachment: false },
+      body: { text: body },
+      footer: { text: footer || `${BRAND} | Issues: ${OWNER_NAME} +${OWNER_PHONE}` },
+      nativeFlowMessage: { buttons }
+    }
+  }, {
+    additionalNodes: [{
+      tag: 'biz',
+      attrs: {},
+      content: [{
+        tag: 'interactive',
+        attrs: { type: 'native_flow', v: '1' },
+        content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }]
+      }]
+    }]
+  });
+}
+
+function startButtons(prefix) {
+  return [
+    {
+      name: 'quick_reply',
+      buttonParamsJson: JSON.stringify({ display_text: 'Get Free Virtual Number', id: `${prefix}tempnumber start` })
+    },
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({ display_text: `Contact ${OWNER_NAME}`, url: OWNER_WA })
+    },
+    {
+      name: 'cta_url',
+      buttonParamsJson: JSON.stringify({ display_text: 'Channel', url: CHANNEL_LINK })
+    }
+  ];
+}
+
+async function loadFresh(sender) {
+  const d = await fetchAPI('numbers', 80);
+  const numbers = normalizeNumbers(d).slice(0, 200);
+  const countries = groupCountries(numbers);
+  const pack = { numbers, countries, total: d.total || numbers.length, ts: Date.now() };
+  numberCache.set(sender, pack);
+  return pack;
+}
+
+async function getPack(sender) {
+  const cached = numberCache.get(sender);
+  if (cached && Date.now() - cached.ts < 180000 && cached.countries.length) return cached;
+  return loadFresh(sender);
+}
+
+async function watchOtp(conn, from, mek, reply, target, timeoutSec) {
+  const key = `${from}:${digits(target)}`;
+  if (waitLocks.has(key)) return reply(`Already waiting for OTP on ${displayNumber(target)}.`);
+  waitLocks.add(key);
+  const intervalSec = 8;
   try {
-    if (!q) {
-      return reply(
-`╭─ *📱 TEMP-NUMBER - FULL v2 ✅* ─
-│ 43k+ OTPs | Auto OTP Listener
-│
-├─ *📌 LIST*
-│.tempnumber numbers → 10 numbers
-│.tempnumber numbers 20
-│.tempnumber otps → 5 recent
-│.tempnumber otps 20
-│
-├─ *📌 CHECK SPECIFIC*
-│.tempnumber check +79246787770
-│.tempnumber check 79014717645
-│.tempnumber otp +79246787770 → only code
-│
-├─ *📌 AUTO WAIT (NEW) 🔥*
-│.tempnumber wait +79246787770
-│ → polls every 7s for 2min until NEW OTP
-│.tempnumber wait +79246787770 120 → 120 sec
-│.tempnumber wait +79246787770 300 → 5 min listener
-│
-├─ *📌 RAW*
-│.tempnumber raw numbers 2 → your SS JSON
-│
-╰─ API: /api/tools/Temp-number?action=...&limit=...`
+    await reply(
+      `*Waiting for SMS OTP*\n\nNumber: ${displayNumber(target)}\nPoll: every ${intervalSec}s\nTimeout: ${timeoutSec}s\n\nSign in now. I will reveal the code as soon as it hits this number.`
+    );
+    const startData = await fetchAPI('otps', 100);
+    const startOtps = startData?.otps || [];
+    const seen = new Set(startOtps.map((o) => `${o.number}|${o.time}|${o.message || o.otp || ''}`.slice(0, 140)));
+    let elapsed = 0;
+    let found = null;
+    while (elapsed < timeoutSec) {
+      await new Promise((r) => setTimeout(r, intervalSec * 1000));
+      elapsed += intervalSec;
+      try {
+        const curData = await fetchAPI('otps', 100);
+        const curOtps = curData?.otps || [];
+        const fresh = curOtps.filter((o) => {
+          const stamp = `${o.number}|${o.time}|${o.message || o.otp || ''}`.slice(0, 140);
+          if (seen.has(stamp)) return false;
+          return matchOtp(o, target);
+        });
+        if (fresh.length) {
+          found = fresh[0];
+          break;
+        }
+        if (elapsed % 24 === 0) {
+          await conn.sendMessage(from, { text: `Still waiting ${displayNumber(target)}... ${elapsed}s / ${timeoutSec}s` }, { quoted: mek });
+        }
+      } catch (e) {
+        console.log('wait poll err', e.message);
+      }
+    }
+    if (found) {
+      const code = otpFromItem(found);
+      let msg = `*OTP RECEIVED*\n\n`;
+      msg += `Number: ${found.number || displayNumber(target)} ${found.flag || ''}\n`;
+      msg += `Country: ${found.country || ''}\n`;
+      msg += `From: ${found.sender || 'SMS'}\n`;
+      msg += `Time: ${found.time || 'now'}\n`;
+      if (found.message) msg += `Message: ${String(found.message).slice(0, 400)}\n`;
+      if (code) msg += `\n*CODE: ${code}*\n`;
+      msg += `\nWaited: ${elapsed}s\nAny issues: ${OWNER_NAME} +${OWNER_PHONE}`;
+      await conn.sendMessage(from, { text: msg }, { quoted: mek });
+      if (code) await conn.sendMessage(from, { text: `*${code}*` }, { quoted: mek });
+    } else {
+      await reply(
+        `Timeout on ${displayNumber(target)}. No new OTP in ${timeoutSec}s.\nTap Check OTP or contact ${OWNER_NAME} +${OWNER_PHONE}`
       );
     }
+  } finally {
+    waitLocks.delete(key);
+  }
+}
 
-    let args = q.trim().split(/\s+/);
-    let action = args[0].toLowerCase();
-    let limit = parseInt(args[1]) || 10;
+cmd({
+  pattern: 'tempnumber',
+  alias: ['tnumber', 'tempnum', 'temp-number', 'otpnumber', 'fakenumber', 'smsotp', 'tempn'],
+  react: '📱',
+  desc: 'Free virtual numbers with live OTP by country buttons',
+  category: 'tools',
+  filename: __filename
+}, async (conn, mek, m, { from, q, reply, prefix }) => {
+  try {
+    const pre = prefix || '.';
+    const sender = m.sender;
+    const raw = String(q || '').trim();
+    const args = raw ? raw.split(/\s+/) : [];
+    const action = (args[0] || '').toLowerCase();
 
-    // RAW DEBUG - your exact screenshot
-    if (action === 'raw') {
-      let a = args[1] || 'numbers';
-      let l = parseInt(args[2]) || 2;
-      const { data } = await axios.get(API, { params: { action: a, limit: l }, timeout: 30000 });
-      await conn.sendMessage(from, { text: `*RAW ${a} limit=${l}:*\n\`\`\`${JSON.stringify(data, null, 2).slice(0,3500)}\`\`\`` }, { quoted: mek });
+    if (!action || action === 'menu' || action === 'help') {
+      const body =
+        `*FREE VIRTUAL NUMBER*\n\n` +
+        `Tap the button to get a live number, pick a country that is online, choose a number, then sign in.\n` +
+        `The bot reveals the SMS OTP as soon as it arrives on that number.\n\n` +
+        `Any issues contact ${OWNER_NAME} +${OWNER_PHONE}`;
+      try {
+        await sendButtons(conn, from, body, startButtons(pre));
+      } catch (_) {
+        await reply(`${body}\n\nType: ${pre}tempnumber start`);
+      }
       return;
     }
 
-    // WAIT / LISTENER - AUTO POLL
+    if (action === 'start' || action === 'get' || action === 'countries') {
+      await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
+      const pack = await loadFresh(sender);
+      if (!pack.countries.length) {
+        return reply(`No live numbers right now. Contact ${OWNER_NAME} +${OWNER_PHONE}`);
+      }
+      const rows = pack.countries.slice(0, 20).map((c) => ({
+        id: `${pre}tempnumber country ${countrySlug(c.name)}`,
+        title: `${c.flag || ''} ${c.name}`.trim().slice(0, 24),
+        description: `${c.numbers.length} live number(s) • +${c.code || ''}`.slice(0, 70)
+      }));
+      const body =
+        `*Available countries*\n${pack.countries.length} online • ${pack.numbers.length} live numbers\n\n` +
+        `Only countries with working numbers are listed. Tap one.`;
+      const buttons = [
+        {
+          name: 'single_select',
+          buttonParamsJson: JSON.stringify({
+            title: 'Choose Country',
+            sections: [{ title: 'Live countries', highlight_label: 'LIVE', rows }]
+          })
+        },
+        {
+          name: 'quick_reply',
+          buttonParamsJson: JSON.stringify({ display_text: 'Refresh list', id: `${pre}tempnumber start` })
+        },
+        {
+          name: 'cta_url',
+          buttonParamsJson: JSON.stringify({ display_text: `Contact ${OWNER_NAME}`, url: OWNER_WA })
+        }
+      ];
+      try {
+        await sendButtons(conn, from, body, buttons);
+      } catch (_) {
+        const lines = pack.countries.map((c, i) => `${i + 1}. ${c.flag} ${c.name} (${c.numbers.length})`).join('\n');
+        await reply(`${body}\n\n${lines}\n\nType: ${pre}tempnumber country <name>`);
+      }
+      return;
+    }
+
+    if (action === 'country') {
+      const slug = args.slice(1).join(' ').toLowerCase();
+      if (!slug) return reply('Pick a country from the list.');
+      const pack = await getPack(sender);
+      const country = pack.countries.find((c) => countrySlug(c.name) === slug || c.name.toLowerCase() === slug);
+      if (!country || !country.numbers.length) {
+        return reply(`That country is not available right now. Tap Get Free Virtual Number again.`);
+      }
+      const nums = country.numbers.slice(0, 20);
+      const rows = nums.map((n) => ({
+        id: `${pre}tempnumber use ${n.number}`,
+        title: displayNumber(n.number).slice(0, 24),
+        description: `${country.flag} ${country.name} • tap to use`.slice(0, 70)
+      }));
+      const body =
+        `*${country.flag} ${country.name}*\n${nums.length} live number(s)\n\n` +
+        `Tap a number. Then sign in on a platform. OTP will appear here automatically.`;
+      const buttons = [
+        {
+          name: 'single_select',
+          buttonParamsJson: JSON.stringify({
+            title: 'Choose Number',
+            sections: [{ title: `${country.name} numbers`, highlight_label: 'SMS', rows }]
+          })
+        },
+        {
+          name: 'quick_reply',
+          buttonParamsJson: JSON.stringify({ display_text: 'Back to countries', id: `${pre}tempnumber start` })
+        }
+      ];
+      try {
+        await sendButtons(conn, from, body, buttons);
+      } catch (_) {
+        const lines = nums.map((n, i) => `${i + 1}. ${displayNumber(n.number)}`).join('\n');
+        await reply(`${body}\n\n${lines}\n\nType: ${pre}tempnumber use +NUMBER`);
+      }
+      return;
+    }
+
+    if (action === 'use' || action === 'pick' || action === 'select') {
+      const target = digits(args[1] || '');
+      if (!target) return reply('Pick a number from the list.');
+      const pack = await getPack(sender);
+      const found = pack.numbers.find((n) => n.number === target) || { number: target, country: '', flag: '' };
+      const platformLines = PLATFORMS.map((p, i) => `${i + 1}. ${p}`).join('\n');
+      const body =
+        `*Number ready*\n${found.flag || ''} ${displayNumber(found.number)}\n${found.country || ''}\n\n` +
+        `Go sign in on one of these platforms using that number:\n${platformLines}\n\n` +
+        `I am listening for the SMS OTP on this number now.\n` +
+        `Any issues contact ${OWNER_NAME} +${OWNER_PHONE}`;
+      const buttons = [
+        {
+          name: 'quick_reply',
+          buttonParamsJson: JSON.stringify({ display_text: 'Check OTP now', id: `${pre}tempnumber check ${found.number}` })
+        },
+        {
+          name: 'quick_reply',
+          buttonParamsJson: JSON.stringify({ display_text: 'Wait 3 min', id: `${pre}tempnumber wait ${found.number} 180` })
+        },
+        {
+          name: 'cta_url',
+          buttonParamsJson: JSON.stringify({ display_text: `Contact ${OWNER_NAME}`, url: OWNER_WA })
+        }
+      ];
+      try {
+        await sendButtons(conn, from, body, buttons);
+      } catch (_) {
+        await reply(body);
+      }
+      await watchOtp(conn, from, mek, reply, found.number, 180);
+      return;
+    }
+
     if (action === 'wait' || action === 'listen' || action === 'watch') {
-      let target = args[1];
-      if (!target) return reply('❌.tempnumber wait +79246787770\nEx:.tempnumber wait 79014717645 120');
-      target = target.replace(/\s/g,'');
-      let timeoutSec = parseInt(args[2]) || 120;
-      let intervalSec = 7;
-
-      await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-      await reply(`*⏳ AUTO WAIT STARTED ✅*\n\n*Number:* ${target}\n*Poll:* every ${intervalSec}s\n*Timeout:* ${timeoutSec}s\n*Total in DB:* ~43k\n\nSend OTP to this number now... I will notify when new OTP arrives.`);
-
-      let startData = await fetchAPI('otps', 100);
-      let startOtps = startData?.otps || [];
-      let seen = new Set(startOtps.map(o=> `${o.number}|${o.time}|${o.message||''}`.slice(0,100)));
-
-      let elapsed = 0;
-      let found = null;
-
-      while (elapsed < timeoutSec) {
-        await new Promise(r=> setTimeout(r, intervalSec*1000));
-        elapsed += intervalSec;
-
-        try {
-          let curData = await fetchAPI('otps', 100);
-          let curOtps = curData?.otps || [];
-
-          // Filter for target
-          let newForTarget = curOtps.filter(o=>{
-            const num = (o.number||'').replace(/[\s+()-]/g,'');
-            const tgt = target.replace(/[\s+()-]/g,'');
-            const key = `${o.number}|${o.time}|${o.message||''}`.slice(0,100);
-            if (seen.has(key)) return false;
-            return num.includes(tgt) || tgt.includes(num);
-          });
-
-          if (newForTarget.length>0) {
-            found = newForTarget[0];
-            break;
-          }
-
-          // Also check if any new OTP at all for this number even if seen logic fails - compare count
-          let targetNow = curOtps.filter(o=>{
-            const num = (o.number||'').replace(/[\s+()-]/g,'');
-            const tgt = target.replace(/[\s+()-]/g,'');
-            return num.includes(tgt) || tgt.includes(num);
-          });
-
-          // If count increased
-          if (targetNow.length > 0) {
-            let targetBefore = startOtps.filter(o=>{
-              const num = (o.number||'').replace(/[\s+()-]/g,'');
-              const tgt = target.replace(/[\s+()-]/g,'');
-              return num.includes(tgt) || tgt.includes(num);
-            });
-            if (targetNow.length > targetBefore.length) {
-              // find newest not in seen
-              for (let o of targetNow) {
-                const key = `${o.number}|${o.time}|${o.message||''}`.slice(0,100);
-                if (!seen.has(key)) { found = o; break; }
-              }
-              if (found) break;
-            }
-          }
-
-          if (elapsed % 21 === 0) {
-            await conn.sendMessage(from, { text: `⏳ Still waiting ${target}... ${elapsed}s / ${timeoutSec}s` }, { quoted: mek });
-          }
-
-        } catch (e) {
-          console.log('wait poll err', e.message);
-        }
-      }
-
-      if (found) {
-        let code = extractCode(found.message||found.text||JSON.stringify(found));
-        let msg = `*🔑 NEW OTP FOUND! ✅*\n\n*Number:* ${found.number} ${found.flag||''}\n*Country:* ${found.country||''}\n*Time:* ${found.time||'now'}\n*Msg:* ${(found.message||found.text||'').slice(0,500)}\n\n`;
-        if (code) msg += `*🔥 CODE: \`${code}\`*\n\n`;
-        msg += `*Waited:* ${elapsed}s\n> @Omegatech-01`;
-        await conn.sendMessage(from, { text: msg }, { quoted: mek });
-        if (code) {
-          await conn.sendMessage(from, { text: `*${code}*` }, { quoted: mek });
-        }
-      } else {
-        await reply(`*⌛ TIMEOUT - ${target}*\nNo new OTP in ${timeoutSec}s\n\nTry:\n.tempnumber check ${target}\n.tempnumber otps 20`);
-      }
+      const target = digits(args[1] || '');
+      if (!target) return reply(`Usage: ${pre}tempnumber wait +79246787770`);
+      const timeoutSec = Math.min(Math.max(parseInt(args[2], 10) || 180, 30), 300);
+      await watchOtp(conn, from, mek, reply, target, timeoutSec);
       return;
     }
 
-    // CHECK + OTP ONLY
     if (action === 'check' || action === 'otp' || action.startsWith('+') || /^\d{7,15}$/.test(action)) {
-      let targetNumber = action === 'check' || action === 'otp'? args[1] : action;
-      if (!targetNumber) return reply('❌.tempnumber check +79246787770');
-      targetNumber = targetNumber.replace(/\s/g,'');
-      let onlyCode = action === 'otp';
-
-      await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
-
-      let d = await fetchAPI('otps', 100);
-      let allOtps = d?.otps || [];
-
-      let filtered = allOtps.filter(o=>{
-        const num = (o.number||'').replace(/[\s+()-]/g,'');
-        const tgt = targetNumber.replace(/[\s+()-]/g,'');
-        return num.includes(tgt) || tgt.includes(num);
-      });
-
-      if (filtered.length===0) return reply(`*📭 NO OTP for ${targetNumber} in last 100*\nTotal: ${d.total||43609}\n\n.tempnumber otps 20\n.tempnumber wait ${targetNumber}`);
-
+      const targetNumber = action === 'check' || action === 'otp' ? args[1] : action;
+      if (!targetNumber) return reply(`Usage: ${pre}tempnumber check +79246787770`);
+      const onlyCode = action === 'otp';
+      await conn.sendMessage(from, { react: { text: '🔍', key: mek.key } });
+      const d = await fetchAPI('otps', 100);
+      const allOtps = d?.otps || [];
+      const filtered = allOtps.filter((o) => matchOtp(o, targetNumber));
+      if (!filtered.length) {
+        return reply(`No OTP yet for ${displayNumber(targetNumber)}.\nKeep the number, request the code again, or tap Wait.`);
+      }
       if (onlyCode) {
-        let codes = filtered.map(o=> ({...o, code: extractCode(o.message||o.text||JSON.stringify(o))})).filter(o=>o.code);
-        if (codes.length===0) return reply(`*Found ${filtered.length} msgs but no code*\n\n${filtered[0].message||JSON.stringify(filtered[0]).slice(0,500)}`);
-        let msg = `*🔑 CODES for ${targetNumber} ✅*\n\n`;
-        codes.slice(0,10).forEach((o,i)=>{ msg+=`${i+1}. \`${o.code}\` - ${o.time} - ${(o.message||'').slice(0,80)}\n`; });
+        const codes = filtered.map((o) => ({ ...o, code: otpFromItem(o) })).filter((o) => o.code);
+        if (!codes.length) return reply(`Found ${filtered.length} SMS but no code.\n${filtered[0].message || ''}`);
+        let msg = `*CODES for ${displayNumber(targetNumber)}*\n\n`;
+        codes.slice(0, 10).forEach((o, i) => { msg += `${i + 1}. ${o.code} - ${o.time} - ${o.sender || ''}\n`; });
         await conn.sendMessage(from, { text: msg }, { quoted: mek });
         await conn.sendMessage(from, { text: `*${codes[0].code}*` }, { quoted: mek });
         return;
       }
-
-      let msg = `*📱 OTPs for ${targetNumber} ✅* (${filtered.length})\n\n`;
-      filtered.slice(0,10).forEach((o,i)=>{
-        let code = extractCode(o.message||o.text||JSON.stringify(o));
-        msg += `${i+1}. *${o.number}* ${o.flag||''}\nTime: ${o.time}\nMsg: ${(o.message||o.text||'').slice(0,200)}\n${code?`🔑 CODE: ${code}\n`:''}\n`;
+      let msg = `*OTPs for ${displayNumber(targetNumber)}* (${filtered.length})\n\n`;
+      filtered.slice(0, 8).forEach((o, i) => {
+        const code = otpFromItem(o);
+        msg += `${i + 1}. ${o.number} ${o.flag || ''}\nFrom: ${o.sender || 'SMS'}\nTime: ${o.time}\n${o.message ? `Msg: ${String(o.message).slice(0, 180)}\n` : ''}${code ? `CODE: ${code}\n` : ''}\n`;
       });
-      msg += `\n.tempnumber otp ${targetNumber} → codes only\n.tempnumber wait ${targetNumber} → auto listener`;
+      msg += `\nAny issues: ${OWNER_NAME} +${OWNER_PHONE}`;
       await conn.sendMessage(from, { text: msg }, { quoted: mek });
+      const latest = otpFromItem(filtered[0]);
+      if (latest) await conn.sendMessage(from, { text: `*${latest}*` }, { quoted: mek });
       return;
     }
 
-    // NUMBERS / OTPS LIST
-    if (!['numbers','otps'].includes(action)) {
-      if (!isNaN(parseInt(action))) { limit = parseInt(action); action = 'numbers'; }
-      else action = action==='otp'?'otps':action;
-    }
-
-    await conn.sendMessage(from, { react: { text: action==='numbers'?"📱":"🔑", key: mek.key } });
-
-    let d = await fetchAPI(action, limit);
-
-    if (action === 'numbers') {
-      let list = d?.numbers || d?.result || d?.data || (Array.isArray(d)?d:[]) ;
-      let finalList = Array.isArray(list)? list : (Array.isArray(d)? d : []);
-      if (finalList.length===0) finalList = d?.numbers || [];
-      if (!Array.isArray(finalList) || finalList.length===0) {
-        return reply(`⚠️ Raw:\n\`\`\`${JSON.stringify(d, null,2).slice(0,2000)}\`\`\``);
+    if (action === 'numbers' || action === 'otps' || action === 'raw') {
+      if (action === 'raw') {
+        const a = args[1] || 'numbers';
+        const l = parseInt(args[2], 10) || 2;
+        const { data } = await axios.get(API, { params: { action: a, limit: l }, timeout: 30000 });
+        await conn.sendMessage(from, { text: `RAW ${a}:\n${JSON.stringify(data, null, 2).slice(0, 3500)}` }, { quoted: mek });
+        return;
       }
-      let msg = `*📱 TEMP NUMBERS - ${finalList.length} ✅*\nTotal OTPs in DB: ${d.total||43609}\n\n`;
-      finalList.slice(0,25).forEach((n,i)=>{
-        msg+=`${i+1}. *${n.number||n.phone}* ${n.flag||''} ${n.country||''}\n +${n.countryCode||''} | ID:${(n.id||'').slice(0,8)}\n→.tempnumber check ${n.number} |.tempnumber wait ${n.number}\n\n`;
-      });
-      await conn.sendMessage(from, { text: msg }, { quoted: mek });
-    } else {
-      let otps = d?.otps || [];
-      if (!otps.length) return reply(`📭 Empty\n\`\`\`${JSON.stringify(d).slice(0,1000)}\`\`\``);
-      let msg = `*🔑 RECENT OTPs - ${otps.length}/${d.total||43609} ✅*\n\n`;
-      otps.forEach((o,i)=>{
-        let code = extractCode(o.message||o.text||JSON.stringify(o));
-        msg+=`${i+1}. *${o.number}* ${o.flag||''} ${o.country||''}\nTime: ${o.time||''}\n${o.message?`Msg: ${o.message.slice(0,150)}\n`:''}${code?`🔑 OTP: ${code}\n`:''}\n`;
-      });
-      msg+=`\n.tempnumber check +NUMBER\n.tempnumber wait +NUMBER`;
-      await conn.sendMessage(from, { text: msg }, { quoted: mek });
+      if (action === 'otps') {
+        const d = await fetchAPI('otps', parseInt(args[1], 10) || 8);
+        const otps = d?.otps || [];
+        if (!otps.length) return reply('No recent OTPs.');
+        let msg = `*Recent OTPs* (${otps.length})\n\n`;
+        otps.forEach((o, i) => {
+          const code = otpFromItem(o);
+          msg += `${i + 1}. ${o.number} ${o.flag || ''}\nFrom: ${o.sender || ''}\n${code ? `CODE: ${code}\n` : ''}\n`;
+        });
+        await conn.sendMessage(from, { text: msg }, { quoted: mek });
+        return;
+      }
+      return reply(`Use the buttons: ${pre}tempnumber`);
     }
 
+    return reply(`Tap *Get Free Virtual Number* or type ${pre}tempnumber`);
   } catch (e) {
     console.error('TempNumber error', e.response?.data || e.message);
-    reply(`❌ ${e.response?.data?.message || e.message}`);
+    reply(`${e.response?.data?.message || e.message}\nAny issues contact ${OWNER_NAME} +${OWNER_PHONE}`);
   }
 });

@@ -1,143 +1,139 @@
-const { cmd } = require("../redx");
-const fetch = require("node-fetch");
-const yts = require("yt-search");
-const axios = require("axios");
+const { cmd } = require('../redx');
+const yts = require('yt-search');
+const axios = require('axios');
 const { fakevCard } = require('../lib/fakevCard');
 
+async function resolveYt(query) {
+  if (/youtube\.com|youtu\.be/i.test(query)) {
+    const url = query.match(/https?:\/\/\S+/i)[0];
+    return { url, title: 'YouTube', thumbnail: '' };
+  }
+  const search = await yts(query);
+  if (!search.videos || !search.videos.length) throw new Error('No result found');
+  return search.videos[0];
+}
+
+async function getMp3(url) {
+  const tries = [
+    async () => {
+      const { data } = await axios.get(`https://arslan-apis-v2.vercel.app/download/ytmp3?url=${encodeURIComponent(url)}`, { timeout: 60000 });
+      if (data?.status && data?.result?.download?.url) {
+        return {
+          url: data.result.download.url,
+          title: data.result.metadata?.title,
+          quality: data.result.download.quality || '128kbps'
+        };
+      }
+      return null;
+    },
+    async () => {
+      const { data } = await axios.get(`https://api.omegatech.app/api/download/youtube?action=download&url=${encodeURIComponent(url)}`, { timeout: 60000 });
+      const d = data?.data || data;
+      if (d?.url) return { url: d.url, title: d.title, quality: d.quality || 'audio' };
+      return null;
+    },
+    async () => {
+      const { data } = await axios.get(`https://arslan-apis-v2.vercel.app/download/ytmp4?url=${encodeURIComponent(url)}`, { timeout: 60000 });
+      if (data?.status && data?.result?.download?.url) {
+        return {
+          url: data.result.download.url,
+          title: data.result.metadata?.title,
+          quality: data.result.download.quality || '128kbps'
+        };
+      }
+      return null;
+    }
+  ];
+  for (const fn of tries) {
+    try {
+      const got = await fn();
+      if (got?.url) return got;
+    } catch (_) {}
+  }
+  throw new Error('Audio not generated');
+}
+
 cmd({
-pattern: "song",
-alias: ["ytmp3", "mp3", "gana", "music", "audio"],
-react: "🎵",
-desc: "YouTube search & MP3 play",
-category: "download",
-use: ".play ",
-filename: __filename
-},
-async (conn, mek, m, { from, args, reply }) => {
+  pattern: 'song',
+  alias: ['mp3', 'gana', 'music', 'audio'],
+  react: '🎵',
+  desc: 'YouTube search & MP3 play',
+  category: 'download',
+  use: '.song ',
+  filename: __filename
+}, async (conn, mek, m, { from, args, reply, q }) => {
+  try {
+    const query = (args && args.length ? args.join(' ') : q || '').trim();
+    if (!query) return reply('Provide a song name or YouTube link.');
 
-try {
+    await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
+    const video = await resolveYt(query);
+    const got = await getMp3(video.url);
+    const title = got.title || video.title || 'song';
 
-const query = args.join(" ");
-if (!query) return reply("❌ Please Provide Me A song Query or Link");
+    await conn.sendMessage(from, {
+      audio: { url: got.url },
+      mimetype: 'audio/mpeg',
+      ptt: false,
+      fileName: `${title}.mp3`,
+      caption: `*${title}*\nQuality: ${got.quality || '128kbps'}\n\n> MONA LISA`,
+      contextInfo: {
+        externalAdReply: {
+          title: String(title).substring(0, 40),
+          body: 'Progress Tech Beats',
+          thumbnailUrl: video.thumbnail,
+          sourceUrl: video.url,
+          mediaType: 1,
+          renderLargerThumbnail: true
+        }
+      }
+    }, { quoted: fakevCard });
 
-await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
-
-/* 🔍 YouTube Search */
-const search = await yts(query);
-
-if (!search.videos || !search.videos.length) {
-return reply("❌ No result Found");
-}
-
-const video = search.videos[0];
-
-/* 🎧 MP3 API */
-const apiUrl = `https://arslan-apis-v2.vercel.app/download/ytmp4?url=${video.url}`;
-
-const res = await axios.get(apiUrl, { timeout: 60000 });
-
-if (
- !res.data ||
- !res.data.status ||
- !res.data.result ||
- !res.data.result.download ||
- !res.data.result.download.url
-) {
- return reply("❌ Audio Not Generated");
-}
-
-const dlUrl = res.data.result.download.url;
-const meta = res.data.result.metadata;
-const quality = res.data.result.download.quality || "128kbps";
-
-/* 🎵 SEND AUDIO */
-await conn.sendMessage(from, {
-audio: { url: dlUrl },
-mimetype: "audio/mpeg",
-ptt: false,
-fileName: `${meta.title || "song"}.mp3`,
-caption:
-`🎵 *${meta.title || "Unknown Title"}*\n` +
-`🎚️ Quality: ${quality}\n\n` +
-`> © 🥰 MONA LISA 🤭`,
-contextInfo: {
-externalAdReply: {
-title: meta.title
-? meta.title.substring(0, 40)
-: "YouTube Song",
-body: "▶︎ •၊၊||၊|။||||။‌‌‌‌‌၊|• ★彡Progress Tech-ʙᴇᴀᴛꜱ彡★",
-thumbnailUrl: video.thumbnail,
-sourceUrl: video.url,
-mediaType: 1,
-renderLargerThumbnail: true
-}
-}
-}, { quoted: fakevCard });
-
-await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
-
-} catch (err) {
-
-console.error("PLAY ERROR:", err);
-
-reply("❌ Error Found Please Try Later");
-
-await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
-
-}
-
+    await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+  } catch (err) {
+    console.error('PLAY ERROR:', err);
+    reply(err.message || 'Error found, please try later');
+    await conn.sendMessage(from, { react: { text: '❌', key: m.key } }).catch(() => {});
+  }
 });
 
-
 cmd({
-  'pattern': 'video1',
-  'alias': ["ytv"],
-  'desc': "Download YouTube Video",
-  'category': 'downloader',
-  'react': '🪄',
-  'filename': __filename
-}, async (_0x291138, _0x40711d, _0x320efe, {
-  from: _0x3764b7,
-  q: _0x247990,
-  reply: _0x5286ec
-}) => {
+  pattern: 'video1',
+  alias: ['ytv1'],
+  desc: 'Download YouTube Video',
+  category: 'downloader',
+  react: '🪄',
+  filename: __filename
+}, async (conn, mek, m, { from, q, reply }) => {
   try {
-    if (!_0x247990) {
-      return _0x5286ec("Please provide a YouTube link or search query.\n\nExample: .video Pasoori");
-    }
-    let _0x3460a4;
-    if (_0x247990.includes("youtube.com") || _0x247990.includes('youtu.be')) {
-      _0x3460a4 = _0x247990;
+    if (!q) return reply('Provide a YouTube link or search query.\nExample: .video Pasoori');
+    let url;
+    if (/youtube\.com|youtu\.be/i.test(q)) {
+      url = q.match(/https?:\/\/\S+/i)[0];
     } else {
-      let _0x145978 = await yts(_0x247990);
-      if (!_0x145978 || !_0x145978.videos || _0x145978.videos.length === 0x0) {
-        return _0x5286ec("No results found.");
-      }
-      _0x3460a4 = _0x145978.videos[0x0].url;
+      const search = await yts(q);
+      if (!search?.videos?.length) return reply('No results found.');
+      url = search.videos[0].url;
     }
-    let _0x32732f = await fetch("https://gtech-api-xtp1.onrender.com/api/video/yt?apikey=APIKEY&url=" + encodeURIComponent(_0x3460a4));
-    let _0x207ba6 = await _0x32732f.json();
-    if (!_0x207ba6.status) {
-      return _0x5286ec("Failed to fetch video.");
+    let videoUrl = null;
+    try {
+      const { data } = await axios.get(`https://api.omegatech.app/api/download/youtube?action=download&url=${encodeURIComponent(url)}`, { timeout: 60000 });
+      videoUrl = data?.data?.url || null;
+    } catch (_) {}
+    if (!videoUrl) {
+      const res = await axios.get('https://gtech-api-xtp1.onrender.com/api/video/yt?apikey=APIKEY&url=' + encodeURIComponent(url), { timeout: 60000 });
+      const media = res.data?.result?.media || {};
+      const hd = media.video_url_hd;
+      const sd = media.video_url_sd;
+      videoUrl = (hd && !/No /i.test(hd) ? hd : null) || (sd && !/No /i.test(sd) ? sd : null);
     }
-    let {
-      video_url_hd: _0x2500e4,
-      video_url_sd: _0x1f2e71
-    } = _0x207ba6.result.media;
-    let _0x5f2691 = _0x2500e4 !== "No HD video URL available" ? _0x2500e4 : _0x1f2e71;
-    if (!_0x5f2691 || _0x5f2691.includes('No')) {
-      return _0x5286ec("No downloadable video found.");
-    }
-    await _0x291138.sendMessage(_0x3764b7, {
-      'video': {
-        'url': _0x5f2691
-      },
-      'caption': "*❀༒★[Progress Tech]★༒❀*"
-    }, {
-      'quoted': fakevCard
-    });
-  } catch (_0x4a5abf) {
-    _0x5286ec("Error while fetching video.");
-    console.log(_0x4a5abf);
+    if (!videoUrl) return reply('No downloadable video found.');
+    await conn.sendMessage(from, {
+      video: { url: videoUrl },
+      caption: '*Progress Tech*'
+    }, { quoted: fakevCard });
+  } catch (e) {
+    reply('Error while fetching video.');
+    console.log(e);
   }
 });
