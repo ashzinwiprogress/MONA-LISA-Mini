@@ -26,14 +26,39 @@ const PLATFORMS = [
 const numberCache = new Map();
 const waitLocks = new Set();
 
+function looksLikeOtpDigits(d) {
+  if (!d || d.length < 4 || d.length > 10) return false;
+  if (/^0+$/.test(d)) return false;
+  if (/^20\d{2}$/.test(d)) return false;
+  return true;
+}
+
 function extractCode(text) {
   if (!text) return null;
   const s = String(text);
-  const labeled = s.match(/(?:code|otp|pin|verify|verification|пароль|код)[^\d]{0,24}(\d{4,8})/i);
-  if (labeled) return labeled[1];
+
+  const wa = s.match(/(?:whatsapp|kode|codigo|код)[^\d]{0,48}(\d{3})-(\d{3})\b/i)
+    || (/(?:whatsapp|kode|codigo|код)/i.test(s) ? s.match(/\b(\d{3})-(\d{3})\b/) : null);
+  if (wa) return wa[1] + wa[2];
+
+  const google = s.match(/\bG-(\d{4,8})\b/i);
+  if (google) return google[1];
+
+  const leadingLabel = s.match(/(?:code|otp|pin|verify|verification|пароль|код|验证码|驗證碼|kode|codigo)[^\d]{0,24}(\d{4,10})/i);
+  if (leadingLabel && looksLikeOtpDigits(leadingLabel[1])) return leadingLabel[1];
+
+  const trailingLabel = s.match(/\b(\d{4,10})\b[^\n]{0,40}(?:code|otp|pin|verify|verification|код)/i);
+  if (trailingLabel && looksLikeOtpDigits(trailingLabel[1])) return trailingLabel[1];
+
+  const glued = s.match(/OTP\s*[:#-]?\s*(\d{4,8})/i);
+  if (glued) return glued[1];
+
+  const lead = s.match(/^(\d{4,8})\b/);
+  if (lead && looksLikeOtpDigits(lead[1])) return lead[1];
+
   const codes = [...s.matchAll(/\b(\d{4,8})\b/g)]
     .map((x) => x[1])
-    .filter((c) => !/^20\d{2}$/.test(c) && !/^0+$/.test(c));
+    .filter((c) => looksLikeOtpDigits(c));
   return codes.length ? codes[codes.length - 1] : null;
 }
 
@@ -103,7 +128,11 @@ function matchOtp(otp, target) {
 }
 
 function otpFromItem(item) {
-  return String(item.otp || extractCode(item.message || item.text || '') || '').replace(/\D/g, '');
+  const raw = String(item?.otp || '').trim();
+  const rawDigits = raw.replace(/\D/g, '');
+  if (raw && !/no otp|link/i.test(raw) && looksLikeOtpDigits(rawDigits)) return rawDigits;
+  const fromMsg = extractCode(item?.message || item?.text || '');
+  return fromMsg ? String(fromMsg).replace(/\D/g, '') : '';
 }
 
 async function sendButtons(conn, from, body, buttons, footer) {
