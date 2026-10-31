@@ -81,7 +81,7 @@ cmd({
 
         if (data?.status === 'new_pairing' && data.code) {
             return reply(
-                `✅ *Pairing code for ${sanitizedNumber}:*\n\n` +
+                `*Pairing code for ${sanitizedNumber}:*\n\n` +
                 `\`\`\`${data.code}\`\`\`\n\n` +
                 `On *that* phone: open WhatsApp → *Linked Devices* → *Link with phone number instead* → enter this code *immediately*.\n` +
                 `⚠️ It expires in about 60 seconds *from now* — if you're forwarding this to someone else, tell them to have WhatsApp already open on the Linked Devices screen *before* you send it, or it may say "Couldn't link device" by the time they type it in.\n\n` +

@@ -432,7 +432,8 @@ form.addEventListener('submit', async (e) => {
 
     if (data.code) {
       showState('success');
-      document.getElementById('codeValue').textContent = data.code;
+      const rawCode = String(data.code || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+      document.getElementById('codeValue').textContent = rawCode.length === 8 ? `${rawCode.slice(0, 4)}-${rawCode.slice(4)}` : data.code;
       return;
     }
 

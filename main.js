@@ -379,32 +379,41 @@ function isWsOpen(conn) {
 }
 
 function waitForSocketConnecting(conn, timeoutMs = 25000) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         let done = false;
-        const finish = () => {
+        const finish = (ok) => {
             if (done) return;
             done = true;
             try { conn.ev.off('connection.update', onUpdate); } catch (_) {}
             clearInterval(poll);
             clearTimeout(timer);
-            resolve();
+            if (ok) resolve();
+            else reject(new Error('WhatsApp socket did not connect in time. Try again.'));
         };
         const onUpdate = (update) => {
-            if (update?.connection === 'open' || isWsOpen(conn)) finish();
+            if (update?.connection === 'open' || update?.connection === 'connecting' || isWsOpen(conn)) finish(true);
         };
-        const poll = setInterval(() => { if (isWsOpen(conn)) finish(); }, 250);
-        const timer = setTimeout(finish, timeoutMs);
-        try { conn.ev.on('connection.update', onUpdate); } catch (_) { finish(); }
-        if (isWsOpen(conn)) finish();
+        const poll = setInterval(() => { if (isWsOpen(conn)) finish(true); }, 250);
+        const timer = setTimeout(() => finish(isWsOpen(conn)), timeoutMs);
+        try { conn.ev.on('connection.update', onUpdate); } catch (_) { finish(isWsOpen(conn)); }
+        if (isWsOpen(conn)) finish(true);
     });
+}
+
+function formatPairingCode(code) {
+    const raw = String(code || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    if (raw.length === 8) return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+    return String(code || '').trim();
 }
 
 async function requestPairingCodeWithRetry(conn, number, attempts = 4) {
     let lastError;
     for (let i = 1; i <= attempts; i++) {
         try {
+            if (!isWsOpen(conn) && i > 1) await waitForSocketConnecting(conn, 15000).catch(() => {});
             const code = await conn.requestPairingCode(number);
-            if (code && String(code).trim()) return code;
+            const formatted = formatPairingCode(code);
+            if (formatted) return formatted;
             throw new Error('Empty pairing code returned');
         } catch (e) {
             lastError = e;
@@ -462,16 +471,26 @@ async function getWAVersion() {
     if (cachedWAVersion && (now - cachedWAVersionAt) < WA_VERSION_CACHE_MS) {
         return cachedWAVersion;
     }
-    try {
-        const { version, isLatest } = await fetchLatestBaileysVersion();
-        cachedWAVersion = version;
-        cachedWAVersionAt = now;
-        redxLog(`Using WhatsApp Web version ${version.join('.')} (${isLatest ? 'latest' : 'newer than the version baked into this Baileys release — consider running npm update @whiskeysockets/baileys'})`, 'info');
-        return version;
-    } catch (e) {
-        redxLog(`Could not fetch the latest WhatsApp Web version (${e.message}) — falling back to Baileys' built-in default. If pairing keeps failing, this usually means outbound HTTPS to WhatsApp's version-check endpoint is blocked on this host.`, 'warning');
-        return cachedWAVersion || undefined; // undefined => let Baileys use its own baked-in default
-    }
+        try {
+            const { version, isLatest } = await fetchLatestBaileysVersion();
+            cachedWAVersion = version;
+            cachedWAVersionAt = now;
+            redxLog(`Using WhatsApp Web version ${version.join('.')} (${isLatest ? 'latest' : 'newer than the version baked into this Baileys release — consider running npm update @whiskeysockets/baileys'})`, 'info');
+            return version;
+        } catch (e) {
+            try {
+                const { data } = await axios.get('https://raw.githubusercontent.com/WhiskeySockets/Baileys/master/src/Defaults/baileys-version.json', { timeout: 8000 });
+                const version = data?.version;
+                if (Array.isArray(version) && version.length >= 3) {
+                    cachedWAVersion = version;
+                    cachedWAVersionAt = now;
+                    redxLog(`Using fallback WhatsApp Web version ${version.join('.')}`, 'info');
+                    return version;
+                }
+            } catch (_) {}
+            redxLog(`Could not fetch the latest WhatsApp Web version (${e.message}) — falling back to Baileys' built-in default. If pairing keeps failing, this usually means outbound HTTPS to WhatsApp's version-check endpoint is blocked on this host.`, 'warning');
+            return cachedWAVersion || undefined;
+        }
 }
 
 // ========== LOAD PLUGINS ==========
@@ -485,7 +504,15 @@ if (!fs.existsSync(pluginsDir)) fs.mkdirSync(pluginsDir, { recursive: true });
 const pluginFiles = fs.readdirSync(pluginsDir).filter(f => f.endsWith('.js')).sort();
 redxLog(`Loading ${pluginFiles.length} plugins...`, 'info');
 for (const file of pluginFiles) {
-    try { require(path.join(pluginsDir, file)); }
+    try {
+        const full = path.join(pluginsDir, file);
+        const size = fs.statSync(full).size;
+        if (size < 40) {
+            redxLog(`Skipped empty plugin ${file}`, 'warning');
+            continue;
+        }
+        require(full);
+    }
     catch (e) { redxLog(`Failed to load plugin ${file}: ${e.message}`, 'error'); }
 }
 const indexed = events.rebuildIndex ? events.rebuildIndex() : events.commands.length;
@@ -836,9 +863,10 @@ async function redxPair(number, res = null) {
             },
             ...(waVersion ? { version: waVersion } : {}),
             logger: pino({ level: "silent" }),
+            printQRInTerminal: false,
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: undefined,
-            keepAliveIntervalMs: 30000,
+            keepAliveIntervalMs: 25000,
             emitOwnEvents: false,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
@@ -1187,13 +1215,13 @@ conn.ev.on('connection.update', async (update) => {
                                 mentionedJid: m.msg?.contextInfo?.mentionedJid || [],
                                 quoted: m.quoted,
                                 config,
-                                reply: (text) => conn.sendMessage(from, { text }, { quoted: mek })
+                                reply: (text) => conn.sendMessage(from, { text: String(text || '') }, { quoted: mek }).catch(() => {})
                             });
                         } catch (e) {
                             console.error('[Button] Command execution error:', e.message);
                             await conn.sendMessage(from, {
-                                text: `❌ Error: ${e.message}`
-                            }, { quoted: mek });
+                                text: `Command failed: ${e.message}`
+                            }, { quoted: mek }).catch(() => {});
                         }
                         return;
                     }
@@ -1326,18 +1354,15 @@ conn.ev.on('connection.update', async (update) => {
                                 mentionedJid: m.msg?.contextInfo?.mentionedJid || [],
                                 quoted: m.quoted,
                                 config,
-                                reply: (text) => conn.sendMessage(from, { text }, { quoted: mek })
+                                reply: (text) => conn.sendMessage(from, { text: String(text || '') }, { quoted: mek }).catch(() => {})
                             });
                         } catch (e) {
                             console.error("[ ❌ ] Command error", e.message);
-                            if (isOwner) {
-                                await m.reply(`❌ Command Error: ${e.message}`).catch(() => {});
-                            } else {
-                                // Previously silent for everyone except the owner — a broken
-                                // command looked identical to a bot that just wasn't
-                                // responding at all. Give every user *some* signal.
-                                await m.reply(`❌ Sorry, *.${cmdName}* hit an error and couldn't complete. Please try again in a moment.`).catch(() => {});
-                            }
+                            await conn.sendMessage(from, {
+                                text: isOwner
+                                    ? `Command error (.${cmdName}): ${e.message}`
+                                    : `*.${cmdName}* failed. Try again in a moment.`
+                            }, { quoted: mek }).catch(() => {});
                         }
                     } else {
                         if (config.SEND_UNKNOWN_COMMAND === "true" && isOwner) {

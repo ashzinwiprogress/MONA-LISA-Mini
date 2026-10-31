@@ -6,42 +6,30 @@ const os = require('os');
 // 🏓 COMMANDE PING (Style Speedtest)
 // =================================================================
 cmd({
-    pattern: "Uptime",
-    alias: ["speed"],
-    desc: "Vérifier la latence et les ressources",
-    category: "general",
+    pattern: "uptime",
+    alias: ["runtime", "botstat"],
+    desc: "Show bot uptime, latency and RAM",
+    category: "system",
     react: "👑"
 },
-async(conn, mek, m, { from, reply, myquoted }) => {
+async(conn, mek, m, { from, reply }) => {
     try {
         const start = Date.now();
-        
-        // 1. Message d'attente
-        const msg = await conn.sendMessage(from, { text: '*T E S T I N G....*' }, { quoted: myquoted });
-        
-        const end = Date.now();
-        const latency = end - start;
-        
-        // 2. Calcul Mémoire (RAM)
-        const totalMemRaw = os.totalmem() / 1024 / 1024;
-        const freeMemRaw = os.freemem() / 1024 / 1024;
-        const totalMem = totalMemRaw.toFixed(0);
-        const freeMem = freeMemRaw.toFixed(0);
-        const usedMem = (totalMemRaw - freeMemRaw).toFixed(0);
+        const msg = await conn.sendMessage(from, { text: '*Checking...*' }, { quoted: mek });
+        const latency = Date.now() - start;
+        const totalMem = (os.totalmem() / 1024 / 1024).toFixed(0);
+        const usedMem = ((os.totalmem() - os.freemem()) / 1024 / 1024).toFixed(0);
+        const sec = Math.floor(process.uptime());
+        const h = Math.floor(sec / 3600);
+        const min = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        const pingMsg =
+`*MONA LISA STATUS*
 
-        // 3. Message Final Stylé
-        const pingMsg = `
-*👑 🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭MINI BOT UPTIME 👑* ⚡
-
-* UPTIME :❯  ${latency}*
-
-*👑 RAM :❯ ${usedMem}MB / ${totalMem}MB
-
-`;
-
-        // 4. Édition du message (Effet visuel)
+Uptime: ${h}h ${min}m ${s}s
+Latency: ${latency}ms
+RAM: ${usedMem}MB / ${totalMem}MB`;
         await conn.sendMessage(from, { text: pingMsg, edit: msg.key });
-
     } catch (e) {
         reply("Error: " + e.message);
     }
@@ -53,25 +41,24 @@ async(conn, mek, m, { from, reply, myquoted }) => {
 // =================================================================
 cmd({
     pattern: "owner",
-    desc: "Contacter le créateur",
-    category: "general",
+    desc: "Contact the creator",
+    category: "system",
     react: "👑"
 },
-async(conn, mek, m, { from, myquoted }) => {
-    const ownerNumber = config.OWNER_NUMBER;
-    
-    // Création d'une vCard (Fiche contact)
+async(conn, mek, m, { from }) => {
+    const ownerNumber = String(Array.isArray(config.OWNER_NUMBER) ? config.OWNER_NUMBER[0] : config.OWNER_NUMBER || '').replace(/[^0-9]/g, '') || '237682432296';
+    const ownerName = config.OWNER_NAME || 'Progress Tech';
     const vcard = 'BEGIN:VCARD\n' +
                   'VERSION:3.0\n' +
-                  'FN:RedxMiniBot (Owner)\n' +
-                  'ORG:RedxMiniBot Corp;\n' +
-                  `TEL;type=CELL;type=VOICE;waid=${ownerNumber}:${ownerNumber}\n` +
+                  `FN:${ownerName}\n` +
+                  'ORG:MONA LISA;\n' +
+                  `TEL;type=CELL;type=VOICE;waid=${ownerNumber}:+${ownerNumber}\n` +
                   'END:VCARD';
 
     await conn.sendMessage(from, {
         contacts: {
-            displayName: '🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭 MINI BOT',
+            displayName: ownerName,
             contacts: [{ vcard }]
         }
-    }, { quoted: myquoted });
+    }, { quoted: mek });
 });

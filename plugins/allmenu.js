@@ -14,19 +14,20 @@ const VERSION = '2.1.0';
 const PREFIX = () => config.PREFIX || '.';
 
 const SECTIONS = [
-  { key: 'ai', title: '🧠 AI & INTELLIGENCE', match: ['ai', 'progresstech ai', 'progresstech-ai'] },
-  { key: 'tools-pt', title: '🔮 PROGRESS TECH TOOLS', match: ['progresstech tools'] },
-  { key: 'image', title: '🎨 IMAGE STUDIO', match: ['sticker', 'image'] },
-  { key: 'video', title: '🎬 VIDEO STUDIO', match: ['video'] },
-  { key: 'music', title: '🎵 MUSIC STUDIO', match: ['music', 'song'] },
-  { key: 'download', title: '📥 DOWNLOAD TOOLS', match: ['download', 'downloader'] },
-  { key: 'search', title: '🌐 SEARCH & INFO', match: ['search'] },
-  { key: 'fun', title: '😄 FUN & GAMES', match: ['fun', 'games'] },
-  { key: 'group', title: '👥 GROUP MANAGER', match: ['group', 'admin'] },
-  { key: 'tools', title: '🛠️ UTILITIES', match: ['tools', 'settings', 'general', 'utility'] },
-  { key: 'sports', title: '🏆 SPORTS HALL', match: ['sports', 'sport'] },
-  { key: 'system', title: '🤖 BOT TOOLS', match: ['system', 'main'] },
-  { key: 'owner', title: '🔐 OWNER ONLY', match: ['owner'] }
+  { key: 'ai', title: 'AI & INTELLIGENCE', match: ['ai', 'progresstech ai', 'progresstech-ai'] },
+  { key: 'tools-pt', title: 'PROGRESS TECH TOOLS', match: ['progresstech tools'] },
+  { key: 'image', title: 'IMAGE STUDIO', match: ['sticker', 'image', 'maker'] },
+  { key: 'video', title: 'VIDEO STUDIO', match: ['video'] },
+  { key: 'music', title: 'MUSIC STUDIO', match: ['music', 'song'] },
+  { key: 'download', title: 'DOWNLOAD TOOLS', match: ['download', 'downloader'] },
+  { key: 'search', title: 'SEARCH & INFO', match: ['search', 'news'] },
+  { key: 'fun', title: 'FUN & GAMES', match: ['fun', 'games'] },
+  { key: 'economy', title: 'ECONOMY', match: ['economy'] },
+  { key: 'group', title: 'GROUP MANAGER', match: ['group', 'admin'] },
+  { key: 'tools', title: 'UTILITIES', match: ['tools', 'settings', 'general', 'utility', 'misc'] },
+  { key: 'sports', title: 'SPORTS HALL', match: ['sports', 'sport'] },
+  { key: 'system', title: 'BOT TOOLS', match: ['system', 'main'] },
+  { key: 'owner', title: 'OWNER ONLY', match: ['owner'] }
 ];
 
 const TAGLINES = [

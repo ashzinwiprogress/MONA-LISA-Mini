@@ -2,7 +2,7 @@ const { cmd } = require('../redx');
 
 cmd({
   pattern: 'ping',
-  alias: ['speed', 'pong'],
+  alias: ['speed', 'botping'],
   desc: 'Measure bot response speed',
   category: 'main',
   react: '⚡',
