@@ -413,7 +413,7 @@ module.exports = {
 /**
  * @module settings
  * @description MONA LISA MINI Configuration Module
- * @version 2.0.0
+ * @version 2.1.0
  * @author Progress Tech
  * @license MIT
  */

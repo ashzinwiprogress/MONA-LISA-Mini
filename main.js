@@ -76,6 +76,11 @@ const fileTypeFromBuffer = FileType.fileTypeFromBuffer || FileType.fromBuffer;
 const axios = require('axios');
 const moment = require('moment-timezone');
 const chalk = require('chalk');
+const { httpAgent, httpsAgent } = require('./lib/http');
+
+axios.defaults.httpAgent = httpAgent;
+axios.defaults.httpsAgent = httpsAgent;
+axios.defaults.timeout = axios.defaults.timeout || 25000;
 
 // ========== IMPORT MONA LISA FEATURES ==========
 const GroupEvents = require('./lib/groupevents');
@@ -483,6 +488,11 @@ for (const file of pluginFiles) {
     try { require(path.join(pluginsDir, file)); }
     catch (e) { redxLog(`Failed to load plugin ${file}: ${e.message}`, 'error'); }
 }
+const indexed = events.rebuildIndex ? events.rebuildIndex() : events.commands.length;
+redxLog(`Indexed ${indexed} command names from ${events.commands.length} plugins`, 'info');
+const bodyEventCommands = typeof events.bodyListeners === 'function'
+    ? events.bodyListeners()
+    : events.commands.filter((c) => c.on === 'body');
 
 // ========== EXTRACT MESSAGE BODY (🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭 Style) ==========
 function extractMessageBody(mek) {
@@ -540,13 +550,29 @@ function extractButtonId(mek) {
 // ========== FIND COMMAND ==========
 function findCommand(cmdName) {
     try {
-        const events = require("./redx");
         const name = String(cmdName || "").trim().toLowerCase();
+        if (!name) return null;
+        if (typeof events.find === 'function') return events.find(name);
         return events.commands.find(cmd =>
             String(cmd.pattern || "").toLowerCase() === name ||
             (cmd.alias && cmd.alias.map(a => String(a).toLowerCase()).includes(name))
         );
     } catch { return null; }
+}
+
+let bannedUsersCache = { list: [], ts: 0 };
+function getBannedUsers() {
+    const now = Date.now();
+    if (now - bannedUsersCache.ts < 15000) return bannedUsersCache.list;
+    let list = [];
+    try {
+        if (fs.existsSync("./lib/ban.json")) {
+            const parsed = JSON.parse(fs.readFileSync("./lib/ban.json", "utf-8"));
+            if (Array.isArray(parsed)) list = parsed;
+        }
+    } catch (_) {}
+    bannedUsersCache = { list, ts: now };
+    return list;
 }
 
 // ========== HELPER FUNCTIONS FOR REACT/VOTE ==========
@@ -1070,7 +1096,7 @@ conn.ev.on('connection.update', async (update) => {
                 }
 
                 // ── AUTO CHANNEL REACT ──
-                await autoReactChannel(conn, mek);
+                autoReactChannel(conn, mek).catch(() => {});
 
                 if (mek.key.remoteJid === "status@broadcast") {
                     await autoHandleStatus(conn, mek);
@@ -1187,6 +1213,10 @@ conn.ev.on('connection.update', async (update) => {
                 const isMe = mek.key.fromMe || jidMatches(sender, botJid) || jidMatches(sender, conn.user?.id);
                 const isOwner = OWNER_NUMBER.includes(senderNumber) || isMe;
 
+                // ========== GET MESSAGE BODY ==========
+                const body = extractMessageBody(mek) || m.body || '';
+                const isCmd = activePrefix === 'noprefix' ? true : body.startsWith(activePrefix);
+
                 // ========== GROUP METADATA ==========
                 let groupMetadata = {};
                 let groupName = '';
@@ -1195,7 +1225,7 @@ conn.ev.on('connection.update', async (update) => {
                 let isBotAdmins = false;
                 let isAdmins = false;
 
-                if (isGroup) {
+                if (isGroup && (isCmd || bodyEventCommands.length)) {
                     try {
                         groupMetadata = await getCachedGroupMetadata(conn, from);
                         groupName = groupMetadata.subject || 'Unknown Group';
@@ -1226,10 +1256,6 @@ conn.ev.on('connection.update', async (update) => {
                     }
                 }
 
-                // ========== GET MESSAGE BODY ==========
-                const body = extractMessageBody(mek) || m.body || '';
-                const isCmd = activePrefix === 'noprefix' ? true : body.startsWith(activePrefix);
-
                 // ========== CUSTOM REACTION ==========
                 if (!mek.message?.reactionMessage && config.CUSTOM_REACT === "true") {
                     const reactions = (config.CUSTOM_REACT_EMOJIS || "🥲,😂,👍🏻,🙂,😔").split(",");
@@ -1243,17 +1269,7 @@ conn.ev.on('connection.update', async (update) => {
                 }
 
                 // ========== BAN CHECK ==========
-                let bannedUsers = [];
-                try {
-                    if (fs.existsSync("./lib/ban.json")) {
-                        bannedUsers = JSON.parse(fs.readFileSync("./lib/ban.json", "utf-8"));
-                        if (!Array.isArray(bannedUsers)) bannedUsers = [];
-                    }
-                } catch (e) {
-                    bannedUsers = [];
-                    if (config.DEBUG === "true") console.log(chalk.gray(`[ ⚠️ ] Ban list read failed: ${e.message}`));
-                }
-
+                const bannedUsers = getBannedUsers();
                 const isBanned = bannedUsers.includes(senderNumber);
                 if (isBanned && !isOwner) {
                     console.log(chalk.red(`[ 🚫 ] Banned user: ${senderNumber}`));
@@ -1271,12 +1287,7 @@ conn.ev.on('connection.update', async (update) => {
                 // ========== COMMAND HANDLER ==========
                 if (isCmd) {
                     const cmdName = (activePrefix === 'noprefix' ? body : body.slice(activePrefix.length)).trim().split(" ")[0].toLowerCase();
-                    const events = require("./redx");
-
-                    const cmd = events.commands.find(cmd =>
-                        String(cmd.pattern || '').toLowerCase() === cmdName ||
-                        (cmd.alias && cmd.alias.map(a => String(a).toLowerCase()).includes(cmdName))
-                    );
+                    const cmd = findCommand(cmdName);
 
                     if (cmd) {
                         if (cmd.react) {
@@ -1336,8 +1347,8 @@ conn.ev.on('connection.update', async (update) => {
                 }
 
                 // ========== BODY EVENTS ==========
-                const events = require("./redx");
-                events.commands.forEach(async (command) => {
+                if (bodyEventCommands.length && (body || mek.message?.imageMessage)) {
+                bodyEventCommands.forEach(async (command) => {
                     if (command.on === "body" && (body || mek.message?.imageMessage)) {
                         try {
                             await command.function(conn, mek, m, {
@@ -1363,6 +1374,7 @@ conn.ev.on('connection.update', async (update) => {
                         }
                     }
                 });
+                }
 
             } catch (e) {
                 console.error("[ ❌ ] Message handler error:", e.message);

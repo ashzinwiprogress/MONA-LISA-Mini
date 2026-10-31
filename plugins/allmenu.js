@@ -10,7 +10,7 @@ const bootTime = Date.now();
 const CHANNEL_LINK = config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029Vb8rLzOCRs1j79bllH05';
 const CHANNEL_JID = config.CHANNEL_JID || '120363431455356251@newsletter';
 const HOST = 'https://progresstech.ing.ng';
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const PREFIX = () => config.PREFIX || '.';
 
 const SECTIONS = [
