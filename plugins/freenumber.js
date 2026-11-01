@@ -1,5 +1,6 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
+const { sendInteractive, quick, urlBtn, select } = require('../lib/buttons');
 
 const API = 'https://api.omegatech.app/api/tools/Temp-number';
 const OWNER_NAME = 'Progress Tech';
@@ -136,40 +137,19 @@ function otpFromItem(item) {
 }
 
 async function sendButtons(conn, from, body, buttons, footer) {
-  await conn.relayMessage(from, {
-    interactiveMessage: {
-      header: { title: 'Free Virtual Number', hasMediaAttachment: false },
-      body: { text: body },
-      footer: { text: footer || `${BRAND} | Issues: ${OWNER_NAME} +${OWNER_PHONE}` },
-      nativeFlowMessage: { buttons }
-    }
-  }, {
-    additionalNodes: [{
-      tag: 'biz',
-      attrs: {},
-      content: [{
-        tag: 'interactive',
-        attrs: { type: 'native_flow', v: '1' },
-        content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }]
-      }]
-    }]
+  await sendInteractive(conn, from, {
+    title: 'Free Virtual Number',
+    body,
+    footer: footer || `${BRAND} | Issues: ${OWNER_NAME} +${OWNER_PHONE}`,
+    buttons
   });
 }
 
 function startButtons(prefix) {
   return [
-    {
-      name: 'quick_reply',
-      buttonParamsJson: JSON.stringify({ display_text: 'Get Free Virtual Number', id: `${prefix}tempnumber start` })
-    },
-    {
-      name: 'cta_url',
-      buttonParamsJson: JSON.stringify({ display_text: `Contact ${OWNER_NAME}`, url: OWNER_WA })
-    },
-    {
-      name: 'cta_url',
-      buttonParamsJson: JSON.stringify({ display_text: 'Channel', url: CHANNEL_LINK })
-    }
+    quick('Get Free Virtual Number', `${prefix}tempnumber start`),
+    urlBtn(`Contact ${OWNER_NAME}`, OWNER_WA),
+    urlBtn('Channel', CHANNEL_LINK)
   ];
 }
 
@@ -290,21 +270,9 @@ cmd({
         `*Available countries*\n${pack.countries.length} online • ${pack.numbers.length} live numbers\n\n` +
         `Only countries with working numbers are listed. Tap one.`;
       const buttons = [
-        {
-          name: 'single_select',
-          buttonParamsJson: JSON.stringify({
-            title: 'Choose Country',
-            sections: [{ title: 'Live countries', highlight_label: 'LIVE', rows }]
-          })
-        },
-        {
-          name: 'quick_reply',
-          buttonParamsJson: JSON.stringify({ display_text: 'Refresh list', id: `${pre}tempnumber start` })
-        },
-        {
-          name: 'cta_url',
-          buttonParamsJson: JSON.stringify({ display_text: `Contact ${OWNER_NAME}`, url: OWNER_WA })
-        }
+        select('Choose Country', 'Live countries', rows, 'LIVE'),
+        quick('Refresh list', `${pre}tempnumber start`),
+        urlBtn(`Contact ${OWNER_NAME}`, OWNER_WA)
       ];
       try {
         await sendButtons(conn, from, body, buttons);
@@ -333,17 +301,8 @@ cmd({
         `*${country.flag} ${country.name}*\n${nums.length} live number(s)\n\n` +
         `Tap a number. Then sign in on a platform. OTP will appear here automatically.`;
       const buttons = [
-        {
-          name: 'single_select',
-          buttonParamsJson: JSON.stringify({
-            title: 'Choose Number',
-            sections: [{ title: `${country.name} numbers`, highlight_label: 'SMS', rows }]
-          })
-        },
-        {
-          name: 'quick_reply',
-          buttonParamsJson: JSON.stringify({ display_text: 'Back to countries', id: `${pre}tempnumber start` })
-        }
+        select('Choose Number', `${country.name} numbers`, rows, 'SMS'),
+        quick('Back to countries', `${pre}tempnumber start`)
       ];
       try {
         await sendButtons(conn, from, body, buttons);
@@ -359,25 +318,21 @@ cmd({
       if (!target) return reply('Pick a number from the list.');
       const pack = await getPack(sender);
       const found = pack.numbers.find((n) => n.number === target) || { number: target, country: '', flag: '' };
-      const platformLines = PLATFORMS.map((p, i) => `${i + 1}. ${p}`).join('\n');
+      const platformRows = PLATFORMS.map((p) => ({
+        id: `${pre}tempnumber wait ${found.number} 180`,
+        title: p.slice(0, 24),
+        description: `Sign in with ${displayNumber(found.number)}`.slice(0, 70)
+      }));
       const body =
         `*Number ready*\n${found.flag || ''} ${displayNumber(found.number)}\n${found.country || ''}\n\n` +
-        `Go sign in on one of these platforms using that number:\n${platformLines}\n\n` +
-        `I am listening for the SMS OTP on this number now.\n` +
+        `Tap a platform, then sign in with this number.\n` +
+        `I am listening for the SMS OTP now.\n` +
         `Any issues contact ${OWNER_NAME} +${OWNER_PHONE}`;
       const buttons = [
-        {
-          name: 'quick_reply',
-          buttonParamsJson: JSON.stringify({ display_text: 'Check OTP now', id: `${pre}tempnumber check ${found.number}` })
-        },
-        {
-          name: 'quick_reply',
-          buttonParamsJson: JSON.stringify({ display_text: 'Wait 3 min', id: `${pre}tempnumber wait ${found.number} 180` })
-        },
-        {
-          name: 'cta_url',
-          buttonParamsJson: JSON.stringify({ display_text: `Contact ${OWNER_NAME}`, url: OWNER_WA })
-        }
+        select('Choose Platform', 'Sign in here', platformRows, 'OTP'),
+        quick('Check OTP now', `${pre}tempnumber check ${found.number}`),
+        quick('Wait 3 min', `${pre}tempnumber wait ${found.number} 180`),
+        urlBtn(`Contact ${OWNER_NAME}`, OWNER_WA)
       ];
       try {
         await sendButtons(conn, from, body, buttons);

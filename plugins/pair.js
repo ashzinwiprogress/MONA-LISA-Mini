@@ -43,7 +43,7 @@ cmd({
 }, async (conn, mek, m, { args, reply, isOwner, senderNumber }) => {
     const publicAccess = config.ALLOW_PUBLIC_PAIR_COMMAND === 'true';
     if (!isOwner && !publicAccess) {
-        return reply("❌ *This command is owner-only.*\nAsk the bot owner to run it for you, or use the web pairing page if one has been shared with you.");
+        return reply("*This command is owner-only.*\nAsk the bot owner to run it for you, or use the web pairing page if one has been shared with you.");
     }
 
     const rawNumber = (args[0] || '').trim();

@@ -391,7 +391,7 @@ function waitForSocketConnecting(conn, timeoutMs = 25000) {
             else reject(new Error('WhatsApp socket did not connect in time. Try again.'));
         };
         const onUpdate = (update) => {
-            if (update?.connection === 'open' || update?.connection === 'connecting' || isWsOpen(conn)) finish(true);
+            if (update?.connection === 'open' || isWsOpen(conn)) finish(true);
         };
         const poll = setInterval(() => { if (isWsOpen(conn)) finish(true); }, 250);
         const timer = setTimeout(() => finish(isWsOpen(conn)), timeoutMs);
@@ -410,7 +410,7 @@ async function requestPairingCodeWithRetry(conn, number, attempts = 4) {
     let lastError;
     for (let i = 1; i <= attempts; i++) {
         try {
-            if (!isWsOpen(conn) && i > 1) await waitForSocketConnecting(conn, 15000).catch(() => {});
+            if (!isWsOpen(conn)) await waitForSocketConnecting(conn, i === 1 ? 25000 : 15000).catch(() => {});
             const code = await conn.requestPairingCode(number);
             const formatted = formatPairingCode(code);
             if (formatted) return formatted;
@@ -548,13 +548,13 @@ function extractMessageBody(mek) {
 function extractButtonId(mek) {
     try {
         const msg = mek.message;
+        if (!msg) return null;
         const interactive = msg.interactiveResponseMessage;
-        if (!interactive) return null;
 
         if (interactive?.nativeFlowResponseMessage?.paramsJson) {
             try {
                 const params = JSON.parse(interactive.nativeFlowResponseMessage.paramsJson);
-                return params.id || params.selected_id || null;
+                return params.id || params.selected_id || params.row_id || null;
             } catch (e) {}
         }
 
@@ -566,7 +566,15 @@ function extractButtonId(mek) {
             return interactive.buttonResponse.selectedButtonId;
         }
 
-        if (msg?.templateButtonReplyMessage?.selectedId) {
+        if (msg.listResponseMessage?.singleSelectReply?.selectedRowId) {
+            return msg.listResponseMessage.singleSelectReply.selectedRowId;
+        }
+
+        if (msg.buttonsResponseMessage?.selectedButtonId) {
+            return msg.buttonsResponseMessage.selectedButtonId;
+        }
+
+        if (msg.templateButtonReplyMessage?.selectedId) {
             return msg.templateButtonReplyMessage.selectedId;
         }
 
@@ -866,7 +874,8 @@ async function redxPair(number, res = null) {
             printQRInTerminal: false,
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: undefined,
-            keepAliveIntervalMs: 25000,
+            keepAliveIntervalMs: 20000,
+            retryRequestDelayMs: 250,
             emitOwnEvents: false,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
@@ -1366,7 +1375,7 @@ conn.ev.on('connection.update', async (update) => {
                         }
                     } else {
                         if (config.SEND_UNKNOWN_COMMAND === "true" && isOwner) {
-                            await m.reply(`❌ Command not found: ${cmdName}\nUse ${prefix}menu to see all commands`);
+                            await m.reply(`Command not found: ${cmdName}\nUse ${activePrefix}menu to see all commands`).catch(() => {});
                         }
                     }
                 }

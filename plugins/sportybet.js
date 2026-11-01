@@ -283,23 +283,12 @@ function fmtMarkets(event) {
 }
 
 async function sendButtons(conn, from, title, body, buttons) {
-  await conn.relayMessage(from, {
-    interactiveMessage: {
-      header: { title, hasMediaAttachment: false },
-      body: { text: body },
-      footer: { text: `${BRAND} | ${CHANNEL_LINK}` },
-      nativeFlowMessage: { buttons }
-    }
-  }, {
-    additionalNodes: [{
-      tag: 'biz',
-      attrs: {},
-      content: [{
-        tag: 'interactive',
-        attrs: { type: 'native_flow', v: '1' },
-        content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }]
-      }]
-    }]
+  const { sendInteractive } = require('../lib/buttons');
+  await sendInteractive(conn, from, {
+    title,
+    body,
+    footer: `${BRAND} | ${CHANNEL_LINK}`,
+    buttons
   });
 }
 
