@@ -141,14 +141,14 @@ async function sendButtons(conn, from, body, buttons, footer) {
     title: 'Free Virtual Number',
     body,
     footer: footer || `${BRAND} | Issues: ${OWNER_NAME} +${OWNER_PHONE}`,
-    buttons
+    buttons: (buttons || []).slice(0, 3)
   });
 }
 
 function startButtons(prefix) {
   return [
-    quick('Get Free Virtual Number', `${prefix}tempnumber start`),
-    urlBtn(`Contact ${OWNER_NAME}`, OWNER_WA),
+    quick('Get Number', `${prefix}tempnumber start`),
+    urlBtn('Contact Owner', OWNER_WA),
     urlBtn('Channel', CHANNEL_LINK)
   ];
 }
@@ -249,7 +249,8 @@ cmd({
         `Any issues contact ${OWNER_NAME} +${OWNER_PHONE}`;
       try {
         await sendButtons(conn, from, body, startButtons(pre));
-      } catch (_) {
+      } catch (e) {
+        console.error('TempNumber menu buttons', e.message);
         await reply(`${body}\n\nType: ${pre}tempnumber start`);
       }
       return;
@@ -261,22 +262,23 @@ cmd({
       if (!pack.countries.length) {
         return reply(`No live numbers right now. Contact ${OWNER_NAME} +${OWNER_PHONE}`);
       }
-      const rows = pack.countries.slice(0, 20).map((c) => ({
+      const rows = pack.countries.slice(0, 30).map((c) => ({
         id: `${pre}tempnumber country ${countrySlug(c.name)}`,
         title: `${c.flag || ''} ${c.name}`.trim().slice(0, 24),
-        description: `${c.numbers.length} live number(s) • +${c.code || ''}`.slice(0, 70)
+        description: `${c.numbers.length} live • +${c.code || ''}`.slice(0, 70)
       }));
       const body =
         `*Available countries*\n${pack.countries.length} online • ${pack.numbers.length} live numbers\n\n` +
-        `Only countries with working numbers are listed. Tap one.`;
+        `Tap a country below.`;
       const buttons = [
-        select('Choose Country', 'Live countries', rows, 'LIVE'),
-        quick('Refresh list', `${pre}tempnumber start`),
-        urlBtn(`Contact ${OWNER_NAME}`, OWNER_WA)
+        select('Countries', 'Live countries', rows, 'LIVE'),
+        quick('Refresh', `${pre}tempnumber start`),
+        urlBtn('Contact Owner', OWNER_WA)
       ];
       try {
         await sendButtons(conn, from, body, buttons);
-      } catch (_) {
+      } catch (e) {
+        console.error('TempNumber country buttons', e.message);
         const lines = pack.countries.map((c, i) => `${i + 1}. ${c.flag} ${c.name} (${c.numbers.length})`).join('\n');
         await reply(`${body}\n\n${lines}\n\nType: ${pre}tempnumber country <name>`);
       }
@@ -291,22 +293,24 @@ cmd({
       if (!country || !country.numbers.length) {
         return reply(`That country is not available right now. Tap Get Free Virtual Number again.`);
       }
-      const nums = country.numbers.slice(0, 20);
+      const nums = country.numbers.slice(0, 30);
       const rows = nums.map((n) => ({
         id: `${pre}tempnumber use ${n.number}`,
         title: displayNumber(n.number).slice(0, 24),
-        description: `${country.flag} ${country.name} • tap to use`.slice(0, 70)
+        description: `${country.flag} ${country.name}`.slice(0, 70)
       }));
       const body =
         `*${country.flag} ${country.name}*\n${nums.length} live number(s)\n\n` +
-        `Tap a number. Then sign in on a platform. OTP will appear here automatically.`;
+        `Tap a number, then pick a platform. OTP will appear here.`;
       const buttons = [
-        select('Choose Number', `${country.name} numbers`, rows, 'SMS'),
-        quick('Back to countries', `${pre}tempnumber start`)
+        select('Numbers', `${country.name}`.slice(0, 20), rows, 'SMS'),
+        quick('Back', `${pre}tempnumber start`),
+        urlBtn('Contact Owner', OWNER_WA)
       ];
       try {
         await sendButtons(conn, from, body, buttons);
-      } catch (_) {
+      } catch (e) {
+        console.error('TempNumber number buttons', e.message);
         const lines = nums.map((n, i) => `${i + 1}. ${displayNumber(n.number)}`).join('\n');
         await reply(`${body}\n\n${lines}\n\nType: ${pre}tempnumber use +NUMBER`);
       }
@@ -329,17 +333,16 @@ cmd({
         `I am listening for the SMS OTP now.\n` +
         `Any issues contact ${OWNER_NAME} +${OWNER_PHONE}`;
       const buttons = [
-        select('Choose Platform', 'Sign in here', platformRows, 'OTP'),
-        quick('Check OTP now', `${pre}tempnumber check ${found.number}`),
-        quick('Wait 3 min', `${pre}tempnumber wait ${found.number} 180`),
-        urlBtn(`Contact ${OWNER_NAME}`, OWNER_WA)
+        select('Platforms', 'Sign in here', platformRows, 'OTP'),
+        quick('Check OTP', `${pre}tempnumber check ${found.number}`),
+        quick('Wait 3 min', `${pre}tempnumber wait ${found.number} 180`)
       ];
       try {
         await sendButtons(conn, from, body, buttons);
-      } catch (_) {
-        await reply(body);
+      } catch (e) {
+        console.error('TempNumber platform buttons', e.message);
+        await reply(`${body}\n\nTap a platform button, or type:\n${pre}tempnumber wait ${found.number} 180`);
       }
-      await watchOtp(conn, from, mek, reply, found.number, 180);
       return;
     }
 
