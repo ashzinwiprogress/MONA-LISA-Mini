@@ -6,7 +6,7 @@ const OMEGA = 'https://api.omegatech.app/api/ai/Gpt-4-mini';
 
 cmd({
   pattern: "chatgpt",
-  alias: ["gpt","gpt5","elitegpt"],
+  alias: ["elitegpt", "chatg"],
   react: "🤖",
   desc: "ChatGPT with Omegatech GPT-4-mini fallback",
   category: "ai",

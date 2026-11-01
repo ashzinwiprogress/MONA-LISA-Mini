@@ -28,7 +28,7 @@ async function getQuotedBuffer(conn, mek, m) {
 
 cmd({
   pattern: "aivideo",
-  alias: ["freevideo", "fvideo", "genvideo2", "text2video"],
+  alias: ["freevideo", "fvideo", "genvideo2"],
   react: "🎬",
   desc: "FreeAI Video - Text2Video & Image2Video (5-10min) - /api/ai/Ai-video",
   category: "ai",

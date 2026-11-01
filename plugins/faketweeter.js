@@ -31,7 +31,7 @@ async function dlBuf(conn, mek, isQuoted=false) {
 
 cmd({
   pattern: "faketweet",
-  alias: ["ftweet", "tweet", "fakex", "xtweet"],
+  alias: ["ftweet", "fakex", "xtweet"],
   react: "🐦",
   desc: "Generate Fake Tweet image - verified badge - /api/Maker/fake-tweet",
   category: "fun",

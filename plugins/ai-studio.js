@@ -197,7 +197,7 @@ cmd({
 // ─── Coding assistant ───
 cmd({
     pattern: "code",
-    alias: ["coder", "codehelp"],
+    alias: ["codehelp", "askcode"],
     desc: "Get coding help from the configured AI provider",
     category: "ai",
     react: "💻",

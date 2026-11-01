@@ -982,8 +982,9 @@ async function redxPair(number, res = null) {
         if (!conn.authState.creds.registered) {
             redxLog(`🔐 Starting NEW pairing process for ${sanitizedNumber}`, 'info');
             try {
-                await waitForSocketConnecting(conn);
-                await delay(2500);
+                await waitForSocketConnecting(conn, 35000);
+                await delay(1500);
+                if (!isWsOpen(conn)) await waitForSocketConnecting(conn, 20000);
                 const code = await requestPairingCodeWithRetry(conn, sanitizedNumber);
                 redxLog(`Pairing Code for ${sanitizedNumber}: ${code}`, 'success');
                 if (res && !res.headersSent) {

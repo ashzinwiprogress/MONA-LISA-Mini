@@ -44,7 +44,7 @@ async function downloadCurrent(conn, mek) {
 
 cmd({
   pattern: "remaker",
-  alias: ["faceswap", "swap", "fswap"],
+  alias: ["remakeswap"],
   react: "🔄",
   desc: "FaceSwap reply-to-image working - target + swap",
   category: "ai",

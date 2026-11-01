@@ -2,12 +2,12 @@ const commands = [];
 const commandIndex = new Map();
 
 function indexCommand(data) {
-  const names = [data.pattern, ...(data.alias || [])]
-    .filter(Boolean)
-    .map((s) => String(s).toLowerCase().trim())
-    .filter(Boolean);
-  for (const n of names) {
-    if (!commandIndex.has(n)) commandIndex.set(n, data);
+  const pattern = String(data.pattern || '').toLowerCase().trim();
+  if (pattern) commandIndex.set(pattern, data);
+  for (const alias of data.alias || []) {
+    const n = String(alias || '').toLowerCase().trim();
+    if (!n || commandIndex.has(n)) continue;
+    commandIndex.set(n, data);
   }
 }
 

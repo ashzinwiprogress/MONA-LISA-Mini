@@ -23,7 +23,7 @@ async function callHotbot({ action='chat', message='', model='gpt-5', sessionId=
 
 cmd({
   pattern: "hotbot",
-  alias: ["hot", "gpt5", "hotai", "hb", "chatbot2"],
+  alias: ["hot", "hotai", "hb", "chatbot2"],
   react: "🔥",
   desc: "Hotbot multi-model chat gpt-5, claude, gemini, deepseek + session - /api/ai/hotbot",
   category: "ai",

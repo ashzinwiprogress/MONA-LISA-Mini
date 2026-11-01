@@ -2,7 +2,7 @@ const { cmd } = require('../redx');
 const crypto = require('crypto');
 cmd({
   pattern: "penalty",
-  alias: ["penaltykick","football","soccer","kick"],
+  alias: ["penaltykick", "pkick"],
   react: "⚽",
   desc: "Penalty Kick - Aim & Curve",
   category: "games",

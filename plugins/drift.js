@@ -2,7 +2,7 @@ const { cmd } = require('../redx');
 const crypto = require('crypto');
 cmd({
   pattern: "drift",
-  alias: ["cardrift","driftking","racing","carrace","car","race"],
+  alias: ["cardrift", "driftking", "racing"],
   react: "🏎️",
   desc: "Car Drift - Smoke & Combo",
   category: "games",

@@ -17,7 +17,7 @@ function getThumb() {
 
 cmd({
   pattern: "zonerai",
-  alias: ["zoneai","imagine","zimage","genimg"],
+  alias: ["zoneai", "zimage"],
   react: "🎨",
   desc: "ElitePro ZonerAI Image Generator (replaces imagine)",
   category: "progresstech ai",

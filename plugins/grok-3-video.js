@@ -19,7 +19,7 @@ function getThumb() {
 
 cmd({
   pattern: "sora3",
-  alias: ["soravideo3", "soraai3", "t2v", "aritek3"],
+  alias: ["soravideo3", "soraai3", "aritek3"],
   react: "🎬",
   desc: "Sora AI Video - Text to Video + Image to Video, 16:9 9:16 1:1",
   category: "progresstech ai",

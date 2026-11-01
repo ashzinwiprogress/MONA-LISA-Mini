@@ -26,7 +26,7 @@ async function downloadQuotedImage(mek, conn) {
 
 cmd({
   pattern: "aimedia",
-  alias: ["aitool", "mediaai", "genimg", "aimediaimg", "aimediabg", "aienhance"],
+  alias: ["aitool", "mediaai", "aimediaimg", "aimediabg", "aienhance"],
   react: "🎨",
   desc: "Multi-function AI media tool - Progress Tech",
   category: "progresstech ai",

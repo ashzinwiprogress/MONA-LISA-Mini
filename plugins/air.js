@@ -5,7 +5,7 @@ const BASE = 'https://eliteprotech-apis.zone.id/ai/airmore';
 
 cmd({
   pattern: "airmore",
-  alias: ["tts","say","voiceai"],
+  alias: ["voiceai", "airtts"],
   react: "🎙️",
   desc: "AirMore TTS - ChristopherMultilingual",
   category: "ai",

@@ -10,7 +10,7 @@ async function callAPI(params) {
 
 cmd({
   pattern: "ephoto360",
-  alias: ["ephoto360", "ep", "textmaker"],
+  alias: ["textmaker360"],
   react: "🎨",
   desc: "ePhoto360 - categories, effects, search, generate - /api/Maker/Ephoto",
   category: "maker",

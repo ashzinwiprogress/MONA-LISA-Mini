@@ -18,7 +18,7 @@ function getThumb() {
 
 cmd({
   pattern: "txt2video",
-  alias: ["t2v", "text2video"],
+  alias: ["text2vid"],
   react: "🎬",
   desc: "Generate AI videos from text prompts with voiceover and aspect ratios",
   category: "progresstech ai",
