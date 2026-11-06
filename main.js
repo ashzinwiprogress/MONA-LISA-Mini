@@ -22,7 +22,7 @@ const {
 
 // ========== SETTINGS.JS SE FETCH ==========
 const config = require('./config');
-const { sms } = require('./lib/msg');
+const { sms, unwrapMessage } = require('./lib/msg');
 const events = require('./redx');
 
 const {
@@ -194,31 +194,67 @@ class SmartCache {
 }
 
 // ========== CACHE INSTANCES ==========
-const messageCache = new SmartCache(300, 180000);
-const groupMetaCache = new SmartCache(100, 300000);
-const userCache = new SmartCache(200, 300000);
+const messageCache = new SmartCache(2000, 180000);
+const groupMetaCache = new SmartCache(2000, 300000);
+const userCache = new SmartCache(500, 300000);
 
 // ========== ACTIVE SESSIONS ==========
 const activeSockets = new Map();
 const socketCreationTime = new Map();
 const processedMessages = new Set();
 
-// ========== SPAM PREVENTION ==========
-const RATE_LIMIT = 5;
-const RATE_WINDOW = 1000;
+// ========== SPAM PREVENTION (per session + sender) ==========
+const RATE_LIMIT = 8;
+const RATE_WINDOW = 2000;
 const userMessageCounts = new Map();
 
-function checkRateLimit(senderNumber) {
+function checkRateLimit(sessionNumber, senderNumber) {
+    const key = `${sessionNumber}:${senderNumber}`;
     const now = Date.now();
-    const userData = userMessageCounts.get(senderNumber) || { count: 0, timestamp: now };
+    const userData = userMessageCounts.get(key) || { count: 0, timestamp: now };
     if (now - userData.timestamp > RATE_WINDOW) {
         userData.count = 1;
         userData.timestamp = now;
     } else {
         userData.count++;
     }
-    userMessageCounts.set(senderNumber, userData);
+    userMessageCounts.set(key, userData);
+    if (userMessageCounts.size > 20000) {
+        const oldest = userMessageCounts.keys().next().value;
+        userMessageCounts.delete(oldest);
+    }
     return userData.count <= RATE_LIMIT;
+}
+
+function markProcessed(sessionNumber, msgId) {
+    if (!msgId) return false;
+    const key = `${sessionNumber}:${msgId}`;
+    if (processedMessages.has(key)) return true;
+    processedMessages.add(key);
+    if (processedMessages.size > 20000) {
+        const oldest = processedMessages.values().next().value;
+        processedMessages.delete(oldest);
+    }
+    return false;
+}
+
+function groupCacheKey(conn, jid) {
+    return `${getBotNumber(conn) || 'unknown'}:${jid}`;
+}
+
+function detachSession(number, socket = null) {
+    const n = normalizePhoneNumber(number);
+    const current = activeSockets.get(n);
+    if (socket && current && current !== socket) return false;
+    activeSockets.delete(n);
+    socketCreationTime.delete(n);
+    if (connectionHeartbeats.has(n)) {
+        clearInterval(connectionHeartbeats.get(n));
+        connectionHeartbeats.delete(n);
+    }
+    const lockKey = `redx_lock_${n}`;
+    if (global[lockKey]) global[lockKey] = false;
+    return true;
 }
 
 // ========== STORE ==========
@@ -429,10 +465,7 @@ function isNumberAlreadyConnected(number) {
     const conn = activeSockets.get(n);
     if (!conn) return false;
     if (isSocketAlive(conn)) return true;
-    // Stale/dead entry — clean it up now so this number is immediately
-    // re-pairable instead of stuck until the whole server restarts.
-    activeSockets.delete(n);
-    socketCreationTime.delete(n);
+    detachSession(n, conn);
     return false;
 }
 
@@ -523,7 +556,7 @@ const bodyEventCommands = typeof events.bodyListeners === 'function'
 
 // ========== EXTRACT MESSAGE BODY (🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭 Style) ==========
 function extractMessageBody(mek) {
-    const msg = mek.message;
+    const msg = unwrapMessage(mek.message) || mek.message || {};
     if (msg.conversation) return msg.conversation;
     if (msg.extendedTextMessage?.text) return msg.extendedTextMessage.text;
     if (msg.imageMessage?.caption) return msg.imageMessage.caption;
@@ -547,7 +580,7 @@ function extractMessageBody(mek) {
 // ========== EXTRACT BUTTON ID ==========
 function extractButtonId(mek) {
     try {
-        const msg = mek.message;
+        const msg = unwrapMessage(mek.message) || mek.message;
         if (!msg) return null;
         const interactive = msg.interactiveResponseMessage;
 
@@ -882,7 +915,7 @@ async function redxPair(number, res = null) {
             syncFullHistory: false,
             markOnlineOnConnect: config.BOT_ONLINE === 'true' || config.KEEP_ONLINE === 'true',
             browser: Browsers.ubuntu('Chrome'),
-            cachedGroupMetadata: async (jid) => groupMetaCache.get(jid) || undefined,
+            cachedGroupMetadata: async (jid) => groupMetaCache.get(`${sanitizedNumber}:${jid}`) || undefined,
             getMessage: async (key) => {
                 const msg = await store.loadMessage(key.remoteJid, key.id);
                 return msg && msg.message ? msg.message : undefined;
@@ -898,7 +931,7 @@ async function redxPair(number, res = null) {
                 if (!update?.id) continue;
                 try {
                     const metadata = await conn.groupMetadata(update.id);
-                    groupMetaCache.set(update.id, metadata, 300000);
+                    groupMetaCache.set(`${sanitizedNumber}:${update.id}`, metadata, 300000);
                 } catch (_) {}
             }
         });
@@ -907,7 +940,7 @@ async function redxPair(number, res = null) {
             try {
                 if (update?.id) {
                     const metadata = await conn.groupMetadata(update.id);
-                    groupMetaCache.set(update.id, metadata, 300000);
+                    groupMetaCache.set(`${sanitizedNumber}:${update.id}`, metadata, 300000);
                 }
                 if (typeof GroupEvents === 'function') {
                     await GroupEvents(conn, update);
@@ -992,12 +1025,7 @@ async function redxPair(number, res = null) {
                 }
             } catch (error) {
                 redxLog(`Failed to request pairing code: ${error.message}`, 'error');
-                // Clean up immediately — without this, a failed pairing
-                // attempt (rate limit, network blip, etc.) leaves this
-                // number stuck in activeSockets forever, permanently
-                // blocking every future attempt to pair it.
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
+                detachSession(sanitizedNumber, conn);
                 try { conn.ev.removeAllListeners(); } catch (_) {}
                 if (res && !res.headersSent) {
                     res.status(500).send({ error: 'Failed to get pairing code', status: 'error', message: error.message });
@@ -1107,9 +1135,7 @@ conn.ev.on('connection.update', async (update) => {
 
         if (reason === DisconnectReason.loggedOut) {
             redxLog(`Session logged out for ${sanitizedNumber} — clearing dead credentials so a fresh pairing attempt starts clean.`, 'error');
-            activeSockets.delete(sanitizedNumber);
-            socketCreationTime.delete(sanitizedNumber);
-            if (connectionLockKey) global[connectionLockKey] = false;
+            detachSession(sanitizedNumber, conn);
             try { conn.ev.removeAllListeners(); } catch (_) {}
             try { await fs.remove(sessionPath); } catch (e) { redxLog(`Failed to remove session folder for ${sanitizedNumber}: ${e.message}`, 'warning'); }
             try { await deleteSessionFromMongoDB(sanitizedNumber); } catch (_) {}
@@ -1119,31 +1145,27 @@ conn.ev.on('connection.update', async (update) => {
 });
         // ========== MESSAGE HANDLER ==========
         conn.ev.on('messages.upsert', async (msg) => {
+            if (msg.type && msg.type !== 'notify') return;
+            const incoming = Array.isArray(msg.messages) ? msg.messages : [];
+            for (const rawMek of incoming) {
             try {
-                const incoming = Array.isArray(msg.messages) ? msg.messages : [];
-                if (!incoming.length) return;
-                let mek = incoming[0];
-                if (!mek || !mek.message) return;
-                if (mek.key?.id) {
-                    if (processedMessages.has(mek.key.id)) return;
-                    processedMessages.add(mek.key.id);
-                    if (processedMessages.size > 2500) {
-                        const oldest = processedMessages.values().next().value;
-                        processedMessages.delete(oldest);
-                    }
-                }
+                let mek = rawMek;
+                if (!mek || !mek.message) continue;
+                if (mek.message.protocolMessage) continue;
+                if (markProcessed(sanitizedNumber, mek.key?.id)) continue;
+                if (mek.message) mek.message = unwrapMessage(mek.message) || mek.message;
 
                 // ── AUTO CHANNEL REACT ──
                 autoReactChannel(conn, mek).catch(() => {});
 
                 if (mek.key.remoteJid === "status@broadcast") {
                     await autoHandleStatus(conn, mek);
-                    return;
+                    continue;
                 }
 
                 // ========== CACHE MESSAGE ==========
                 if (mek.message && mek.key?.id && mek.key.remoteJid !== 'status@broadcast') {
-                    messageCache.set(mek.key.id, mek);
+                    messageCache.set(`${sanitizedNumber}:${mek.key.id}`, mek);
                 }
 
                 // ========== AUTO READ ==========
@@ -1233,7 +1255,7 @@ conn.ev.on('connection.update', async (update) => {
                                 text: `Command failed: ${e.message}`
                             }, { quoted: mek }).catch(() => {});
                         }
-                        return;
+                        continue;
                     }
                 }
 
@@ -1250,10 +1272,11 @@ conn.ev.on('connection.update', async (update) => {
                 const botNumber = getBotNumber(conn);
                 const isMe = mek.key.fromMe || jidMatches(sender, botJid) || jidMatches(sender, conn.user?.id);
                 const isOwner = OWNER_NUMBER.includes(senderNumber) || isMe;
+                if (!isOwner && !checkRateLimit(sanitizedNumber, senderNumber || from)) continue;
 
                 // ========== GET MESSAGE BODY ==========
-                const body = extractMessageBody(mek) || m.body || '';
-                const isCmd = activePrefix === 'noprefix' ? true : body.startsWith(activePrefix);
+                const body = String(extractMessageBody(mek) || m.body || '').trim();
+                const isCmd = activePrefix === 'noprefix' ? true : body.toLowerCase().startsWith(String(activePrefix).toLowerCase());
 
                 // ========== GROUP METADATA ==========
                 let groupMetadata = {};
@@ -1311,15 +1334,15 @@ conn.ev.on('connection.update', async (update) => {
                 const isBanned = bannedUsers.includes(senderNumber);
                 if (isBanned && !isOwner) {
                     console.log(chalk.red(`[ 🚫 ] Banned user: ${senderNumber}`));
-                    return;
+                    continue;
                 }
 
                 // ========== MODE PERMISSION ==========
                 if (from !== "status@broadcast") {
                     const mode = config.MODE || "public";
-                    if (mode === "private" && !isOwner) return;
-                    if (mode === "inbox" && !isGroup && !isOwner) return;
-                    if (mode === "group" && !isGroup && !isOwner) return;
+                    if (mode === "private" && !isOwner) continue;
+                    if (mode === "inbox" && isGroup && !isOwner) continue;
+                    if ((mode === "group" || mode === "groups") && !isGroup && !isOwner) continue;
                 }
 
                 // ========== COMMAND HANDLER ==========
@@ -1414,14 +1437,12 @@ conn.ev.on('connection.update', async (update) => {
             } catch (e) {
                 console.error("[ ❌ ] Message handler error:", e.message);
             }
+            }
         });
 
     } catch (err) {
         redxLog(`MONA LISA pairing error: ${err.message}`, 'error');
-        // Belt-and-suspenders: whatever failed above, make sure this number
-        // isn't left stuck as "connected" with no real connection behind it.
-        activeSockets.delete(sanitizedNumber);
-        socketCreationTime.delete(sanitizedNumber);
+        detachSession(sanitizedNumber);
         if (res && !res.headersSent) return res.json({ error: 'Internal Server Error', details: err.message });
     } finally {
         if (connectionLockKey) global[connectionLockKey] = false;
@@ -1431,7 +1452,8 @@ conn.ev.on('connection.update', async (update) => {
 // ========== GET CACHED GROUP METADATA ==========
 async function getCachedGroupMetadata(conn, jid) {
     try {
-        let metadata = groupMetaCache.get(jid);
+        const cacheKey = groupCacheKey(conn, jid);
+        let metadata = groupMetaCache.get(cacheKey);
         if (!metadata) {
             if (!conn.groupMetadata) {
                 return { participants: [], subject: "Unknown Group", id: jid };
@@ -1440,7 +1462,7 @@ async function getCachedGroupMetadata(conn, jid) {
             if (!metadata.participants || !Array.isArray(metadata.participants)) {
                 metadata.participants = [];
             }
-            groupMetaCache.set(jid, metadata, 300000);
+            groupMetaCache.set(cacheKey, metadata, 300000);
             if (config.DEBUG === "true") {
                 console.log(chalk.gray(`[ 📁 ] Group metadata cached: ${metadata.subject || jid}`));
             }
@@ -1479,6 +1501,12 @@ function setupAutoRestart(socket, number) {
     let restartAttempts = 0;
     const maxRestartAttempts = 8;
     let reconnecting = false;
+    const sanitizedNumber = normalizePhoneNumber(number);
+
+    const dropThisSocketOnly = () => {
+        detachSession(sanitizedNumber, socket);
+        try { socket.ev.removeAllListeners(); } catch (_) {}
+    };
 
     socket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
@@ -1487,34 +1515,24 @@ function setupAutoRestart(socket, number) {
             const errorMessage = lastDisconnect && lastDisconnect.error && lastDisconnect.error.message;
             redxLog(`Connection closed for ${number}: ${statusCode} - ${errorMessage}`, 'warning');
 
+            if (activeSockets.get(sanitizedNumber) && activeSockets.get(sanitizedNumber) !== socket) {
+                try { socket.ev.removeAllListeners(); } catch (_) {}
+                return;
+            }
+
             if (statusCode === 401 || (errorMessage && errorMessage.includes('401'))) {
                 redxLog(`Manual unlink detected for ${number}, cleaning up...`, 'warning');
-                const sanitizedNumber = normalizePhoneNumber(number);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
+                dropThisSocketOnly();
                 await deleteSessionFromMongoDB(sanitizedNumber);
                 await removeNumberFromMongoDB(sanitizedNumber);
-                socket.ev.removeAllListeners();
                 return;
             }
 
             if (statusCode === DisconnectReason.restartRequired) {
-                // NOT a failure — this is a normal, expected step of pairing-code
-                // login. WhatsApp closes the socket once after the code is
-                // accepted and expects an immediate reconnect using the same
-                // session to finish registration. Treating this as a generic
-                // disconnect (10s delay + retry-counter) is exactly what leaves
-                // the phone stuck on "Logging in..." — so it gets its own fast,
-                // uncounted path here instead.
                 redxLog(`Restart required for ${number} (normal post-pairing step) — reconnecting immediately...`, 'info');
-                const sanitizedNumber = normalizePhoneNumber(number);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
-                socket.ev.removeAllListeners();
-                // Brief pause, not a real delay from the user's perspective —
-                // just enough margin for the just-written local creds.json to
-                // finish flushing to disk before we read it back below.
+                dropThisSocketOnly();
                 await delay(500);
+                if (isNumberAlreadyConnected(sanitizedNumber)) return;
                 try {
                     const mockRes = { headersSent: false, send: () => {}, status: () => mockRes, setHeader: () => {}, json: () => {} };
                     await redxPair(number, mockRes);
@@ -1527,40 +1545,19 @@ function setupAutoRestart(socket, number) {
             const isNormalError = statusCode === 408 || (errorMessage && errorMessage.includes('QR refs attempts ended'));
             if (isNormalError) {
                 redxLog(`Normal closure for ${number} (likely pairing code expired/unused), cleaning up so it can be retried...`, 'info');
-                const sanitizedNumber = normalizePhoneNumber(number);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
-                socket.ev.removeAllListeners();
+                dropThisSocketOnly();
                 return;
             }
 
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                 redxLog(`Logged out for ${number} — not auto-reconnecting.`, 'error');
-                const sanitizedNumber = normalizePhoneNumber(number);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
-                socket.ev.removeAllListeners();
+                dropThisSocketOnly();
                 return;
             }
 
-            if (statusCode === DisconnectReason.connectionReplaced || statusCode === 440) {
-                redxLog(`Connection replaced for ${number} — another session took over.`, 'warning');
-                const sanitizedNumber = normalizePhoneNumber(number);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
-                socket.ev.removeAllListeners();
-                return;
-            }
-
-            if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-                return;
-            }
             if (statusCode === DisconnectReason.connectionReplaced || statusCode === 440) {
                 redxLog(`Connection replaced for ${number} — another session took over. Not reconnecting.`, 'warning');
-                const sanitizedNumber = normalizePhoneNumber(number);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
-                socket.ev.removeAllListeners();
+                dropThisSocketOnly();
                 return;
             }
 
@@ -1570,21 +1567,20 @@ function setupAutoRestart(socket, number) {
                 restartAttempts++;
                 const waitMs = Math.min(3000 * restartAttempts, 30000);
                 redxLog(`Reconnecting ${number} (${restartAttempts}/${maxRestartAttempts}) in ${waitMs / 1000}s...`, 'warning');
-                const sanitizedNumber = normalizePhoneNumber(number);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
-                socket.ev.removeAllListeners();
+                dropThisSocketOnly();
                 await delay(waitMs);
+                if (isNumberAlreadyConnected(sanitizedNumber)) {
+                    reconnecting = false;
+                    return;
+                }
                 try {
                     const mockRes = { headersSent: false, send: () => {}, status: () => mockRes, setHeader: () => {}, json: () => {} };
                     await redxPair(number, mockRes);
                 } catch (e) { redxLog(`Reconnection failed for ${number}: ${e.message}`, 'error'); }
+                reconnecting = false;
             } else {
                 redxLog(`Max restart attempts reached for ${number} — clearing so it can be re-paired manually.`, 'error');
-                const sanitizedNumber = normalizePhoneNumber(number);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
-                socket.ev.removeAllListeners();
+                dropThisSocketOnly();
             }
         }
         if (connection === 'open') { restartAttempts = 0; reconnecting = false; }
@@ -1622,8 +1618,7 @@ router.get('/force-code', async (req, res) => {
             try {
                 const socket = activeSockets.get(sanitizedNumber);
                 await closeSocketSafe(socket);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
+                detachSession(sanitizedNumber, socket);
                 redxLog(`✅ Force disconnected ${sanitizedNumber}`, 'success');
             } catch (error) {
                 redxLog(`Force disconnect error: ${error.message}`, 'error');
@@ -1699,8 +1694,7 @@ router.get('/force-reset', async (req, res) => {
             try {
                 const socket = activeSockets.get(sanitizedNumber);
                 await closeSocketSafe(socket);
-                activeSockets.delete(sanitizedNumber);
-                socketCreationTime.delete(sanitizedNumber);
+                detachSession(sanitizedNumber, socket);
                 redxLog(`✅ Disconnected ${sanitizedNumber}`, 'success');
             } catch (error) {
                 redxLog(`Disconnect error: ${error.message}`, 'error');
@@ -1929,8 +1923,7 @@ router.get('/disconnect', async (req, res) => {
     try {
         const socket = activeSockets.get(n);
         await closeSocketSafe(socket);
-        activeSockets.delete(n);
-        socketCreationTime.delete(n);
+        detachSession(n, socket);
         await removeNumberFromMongoDB(n);
         await deleteSessionFromMongoDB(n);
         res.json({ status: 'success', message: 'Disconnected' });
@@ -1956,13 +1949,17 @@ router.get('/connect-all', async (req, res) => {
         if (!numbers.length) return res.status(404).json({ error: 'No numbers found' });
         const results = [];
         for (const number of numbers) {
-            if (activeSockets.has(number)) {
+            if (isNumberAlreadyConnected(number)) {
                 results.push({ number, status: 'already_connected' });
                 continue;
             }
-            const mockRes = { headersSent: false, json: () => {}, status: () => mockRes };
-            await redxPair(number, mockRes);
-            results.push({ number, status: 'connection_initiated' });
+            try {
+                const mockRes = { headersSent: false, json: () => {}, status: () => mockRes, send: () => {}, setHeader: () => {} };
+                await redxPair(number, mockRes);
+                results.push({ number, status: 'connection_initiated' });
+            } catch (e) {
+                results.push({ number, status: 'failed', error: e.message });
+            }
             await delay(1000);
         }
         res.json({ status: 'success', total: numbers.length, connections: results });
@@ -2339,11 +2336,14 @@ async function autoReconnectFromMongoDB() {
         const numbers = await getAllNumbersFromMongoDB();
         if (!numbers.length) { redxLog('No numbers in MongoDB', 'info'); return; }
         for (const number of numbers) {
-            if (!activeSockets.has(number)) {
-                const mockRes = { headersSent: false, json: () => {}, status: () => mockRes };
+            if (isNumberAlreadyConnected(number)) continue;
+            try {
+                const mockRes = { headersSent: false, json: () => {}, status: () => mockRes, send: () => {}, setHeader: () => {} };
                 await redxPair(number, mockRes);
-                await delay(2000);
+            } catch (e) {
+                redxLog(`Auto-reconnect failed for ${number}: ${e.message}`, 'error');
             }
+            await delay(2000);
         }
         redxLog('Auto-reconnect completed', 'success');
     } catch (e) {
@@ -2360,8 +2360,7 @@ setTimeout(() => { autoReconnectFromMongoDB(); }, 3000);
 process.on('exit', () => {
     activeSockets.forEach((socket, number) => {
         try { closeSocketSafe(socket); } catch (_) {}
-        activeSockets.delete(number);
-        socketCreationTime.delete(number);
+        detachSession(number, socket);
     });
     const sessionDir = path.join(__dirname, 'session');
     if (fs.existsSync(sessionDir)) fs.emptyDirSync(sessionDir);

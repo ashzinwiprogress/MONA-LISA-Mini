@@ -12,13 +12,9 @@
 //   correct and to keep in sync with WhatsApp Web version pinning, number
 //   validation, session handling, etc.
 //
-//   Restricted to the bot owner by default. Generating a pairing code for
-//   a number you don't control and getting the target to type it into
-//   their own phone is a known account-takeover trick (this is exactly
-//   the class of issue this project's earlier .pair/.pair2 commands
-//   caused, per the security cleanup notes in the README) — so this is
-//   intentionally gated. Set ALLOW_PUBLIC_PAIR_COMMAND=true in .env if you
-//   understand and accept that trade-off for your own deployment.
+//   Public by default: anyone can generate a pairing code from chat so
+//   another account can be linked without owner permission. Set
+//   ALLOW_PUBLIC_PAIR_COMMAND=false in .env to lock it back to the owner.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const { cmd } = require('../redx');
@@ -41,7 +37,7 @@ cmd({
     use: ".pair 237682432296",
     filename: __filename,
 }, async (conn, mek, m, { args, reply, isOwner, senderNumber }) => {
-    const publicAccess = config.ALLOW_PUBLIC_PAIR_COMMAND === 'true';
+    const publicAccess = config.ALLOW_PUBLIC_PAIR_COMMAND !== 'false';
     if (!isOwner && !publicAccess) {
         return reply("*This command is owner-only.*\nAsk the bot owner to run it for you, or use the web pairing page if one has been shared with you.");
     }

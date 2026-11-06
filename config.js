@@ -91,16 +91,12 @@ module.exports = {
         ['237682432296'],
 
     /**
-     * @description Who can use the .pair chat command to generate a pairing
-     * code for a number from inside a chat (instead of the web /code page).
-     * Defaults to owner-only, since generating a pairing code for a number
-     * you don't control and getting the target to enter it is a known
-     * account-takeover trick — the same class of issue this project's
-     * previous .pair/.pair2 credential-harvesting commands caused. Set to
-     * 'true' in .env only if you understand and accept that trade-off.
+     * @description Who can use the .pair chat command. Defaults to public
+     * so anyone can link another account from chat without owner permission.
+     * Set ALLOW_PUBLIC_PAIR_COMMAND=false in .env to lock it to the owner.
      * @type {string}
      */
-    ALLOW_PUBLIC_PAIR_COMMAND: process.env.ALLOW_PUBLIC_PAIR_COMMAND || 'false',
+    ALLOW_PUBLIC_PAIR_COMMAND: process.env.ALLOW_PUBLIC_PAIR_COMMAND || 'true',
 
     /**
      * @description Bot footer text
