@@ -69,17 +69,16 @@ app.listen(port, () => {
 // instance is awake — pair it with a free external monitor (see README) that
 // can also wake it up if it ever does go to sleep.
 const keepAliveBase = process.env.KEEP_ALIVE_URL
-    || (process.env.KEEP_ALIVE === 'true' ? process.env.RENDER_EXTERNAL_URL : '');
+    || process.env.RENDER_EXTERNAL_URL
+    || (process.env.KEEP_ALIVE === 'true' ? `http://127.0.0.1:${port}` : `http://127.0.0.1:${port}`);
 if (keepAliveBase) {
     const target = keepAliveBase.replace(/\/$/, '') + '/ping';
     setInterval(() => {
         fetch(target, { signal: AbortSignal.timeout(15000) })
-            .then(r => console.log(`💓 keep-alive ping → HTTP ${r.status}`))
-            .catch(e => console.log(`💓 keep-alive ping failed: ${e.message}`));
-    }, 10 * 60 * 1000);
-    console.log(`💓 Keep-alive on: pinging ${target} every 10 minutes`);
-} else if (process.env.KEEP_ALIVE === 'true') {
-    console.log('⚠️  KEEP_ALIVE=true but no public URL is known here — set KEEP_ALIVE_URL to your service URL.');
+            .then(r => console.log(`keep-alive ping -> HTTP ${r.status}`))
+            .catch(e => console.log(`keep-alive ping failed: ${e.message}`));
+    }, 4 * 60 * 1000);
+    console.log(`Keep-alive on: pinging ${target} every 4 minutes`);
 }
 
 module.exports = app;

@@ -2,6 +2,7 @@ const { cmd } = require('../redx');
 const yts = require('yt-search');
 const axios = require('axios');
 const { fakevCard } = require('../lib/fakevCard');
+const { sendInteractive, quick } = require('../lib/buttons');
 
 async function resolveYt(query) {
   if (/youtube\.com|youtu\.be/i.test(query)) {
@@ -52,6 +53,48 @@ async function getMp3(url) {
   }
   throw new Error('Audio not generated');
 }
+
+cmd({
+  pattern: 'play',
+  alias: ['playmusic', 'playsong'],
+  react: '🎵',
+  desc: 'Search a song and tap Audio or Video',
+  category: 'download',
+  use: '.play song name',
+  filename: __filename
+}, async (conn, mek, m, { from, args, reply, q, prefix }) => {
+  try {
+    const query = (args && args.length ? args.join(' ') : q || '').trim();
+    const pre = prefix || '.';
+    if (!query) {
+      return reply(`*Play music*\n\nType a song name, then tap Audio or Video.\nExample: ${pre}play pasoori`);
+    }
+    await conn.sendMessage(from, { react: { text: '🔍', key: m.key } });
+    const video = await resolveYt(query);
+    const title = video.title || query;
+    const body =
+      `*${title}*\n\n` +
+      `${video.timestamp ? `Duration: ${video.timestamp}\n` : ''}` +
+      `Tap a button:`;
+    const buttons = [
+      quick('Audio MP3', `${pre}song ${video.url}`),
+      quick('Video MP4', `${pre}video ${video.url}`)
+    ];
+    try {
+      await sendInteractive(conn, from, {
+        title: 'Play',
+        body,
+        footer: 'MONA LISA · Progress Tech',
+        buttons
+      });
+    } catch (_) {
+      await reply(`${body}\n\n${pre}song ${video.url}\n${pre}video ${video.url}`);
+    }
+  } catch (err) {
+    console.error('PLAY MENU ERROR:', err);
+    reply(err.message || 'Could not search that song. Try another name.');
+  }
+});
 
 cmd({
   pattern: 'song',

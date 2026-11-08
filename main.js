@@ -257,6 +257,15 @@ function detachSession(number, socket = null) {
     return true;
 }
 
+async function wipeDeadSession(number) {
+    const n = normalizePhoneNumber(number);
+    const sessionPath = path.join(__dirname, 'session', `session_${n}`);
+    try { await fs.remove(sessionPath); } catch (_) {}
+    try { await deleteSessionFromMongoDB(n); } catch (_) {}
+    try { await removeNumberFromMongoDB(n); } catch (_) {}
+    try { await forceReleaseConnectionLock(n); } catch (_) {}
+}
+
 // ========== STORE ==========
 function createStore() {
     const MAX_TRACKED_CHATS = 500;
@@ -851,8 +860,15 @@ async function redxPair(number, res = null) {
 
         connectionLockKey = `redx_lock_${sanitizedNumber}`;
         if (global[connectionLockKey]) {
-            if (res && !res.headersSent) return res.json({ status: 'connection_in_progress' });
-            return;
+            await delay(1500);
+            if (isNumberAlreadyConnected(sanitizedNumber)) {
+                const status = getConnectionStatus(sanitizedNumber);
+                if (res && !res.headersSent) {
+                    return res.json({ status: 'already_connected', message: 'Number is already connected', connectionTime: status.connectionTime, uptime: `${status.uptime} seconds` });
+                }
+                return;
+            }
+            global[connectionLockKey] = false;
         }
         global[connectionLockKey] = true;
 
@@ -924,7 +940,7 @@ async function redxPair(number, res = null) {
             logger: pino({ level: "silent" }),
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: undefined,
-            keepAliveIntervalMs: 20000,
+            keepAliveIntervalMs: 15000,
             retryRequestDelayMs: 250,
             emitOwnEvents: false,
             fireInitQueries: true,
@@ -1150,13 +1166,11 @@ conn.ev.on('connection.update', async (update) => {
         }
         releaseConnectionLock(sanitizedNumber, PROCESS_ID);
 
-        if (reason === DisconnectReason.loggedOut) {
+        if (reason === DisconnectReason.loggedOut || reason === 401) {
             redxLog(`Session logged out for ${sanitizedNumber} — clearing dead credentials so a fresh pairing attempt starts clean.`, 'error');
             detachSession(sanitizedNumber, conn);
             try { conn.ev.removeAllListeners(); } catch (_) {}
-            try { await fs.remove(sessionPath); } catch (e) { redxLog(`Failed to remove session folder for ${sanitizedNumber}: ${e.message}`, 'warning'); }
-            try { await deleteSessionFromMongoDB(sanitizedNumber); } catch (_) {}
-            try { await removeNumberFromMongoDB(sanitizedNumber); } catch (_) {}
+            await wipeDeadSession(sanitizedNumber);
         }
     }
 });
@@ -1238,7 +1252,7 @@ conn.ev.on('connection.update', async (update) => {
                         }
 
                         try {
-                            await cmd.function(conn, mek, m, {
+                            Promise.resolve(cmd.function(conn, mek, m, {
                                 from,
                                 prefix: livePrefix,
                                 fromMe: mek.key.fromMe,
@@ -1266,6 +1280,11 @@ conn.ev.on('connection.update', async (update) => {
                                 quoted: m.quoted,
                                 config,
                                 reply: makeReply(conn, from, mek)
+                            })).catch((e) => {
+                                console.error('[Button] Command execution error:', e.message);
+                                conn.sendMessage(from, {
+                                    text: `Command failed: ${e.message}`
+                                }, { quoted: mek }).catch(() => {});
                             });
                         } catch (e) {
                             console.error('[Button] Command execution error:', e.message);
@@ -1378,7 +1397,7 @@ conn.ev.on('connection.update', async (update) => {
                             const q = args.join(" ");
                             const text = args.join(" ");
 
-                            await cmd.function(conn, mek, m, {
+                            Promise.resolve(cmd.function(conn, mek, m, {
                                 from,
                                 prefix: activePrefix,
                                 fromMe: isMe,
@@ -1406,6 +1425,13 @@ conn.ev.on('connection.update', async (update) => {
                                 quoted: m.quoted,
                                 config,
                                 reply: makeReply(conn, from, mek)
+                            })).catch((e) => {
+                                console.error("[ ❌ ] Command error", e.message);
+                                conn.sendMessage(from, {
+                                    text: isOwner
+                                        ? `Command error (.${cmdName}): ${e.message}`
+                                        : `*.${cmdName}* failed. Try again in a moment.`
+                                }, { quoted: mek }).catch(() => {});
                             });
                         } catch (e) {
                             console.error("[ ❌ ] Command error", e.message);
@@ -1541,8 +1567,7 @@ function setupAutoRestart(socket, number) {
             if (statusCode === 401 || (errorMessage && errorMessage.includes('401'))) {
                 redxLog(`Manual unlink detected for ${number}, cleaning up...`, 'warning');
                 dropThisSocketOnly();
-                await deleteSessionFromMongoDB(sanitizedNumber);
-                await removeNumberFromMongoDB(sanitizedNumber);
+                await wipeDeadSession(sanitizedNumber);
                 return;
             }
 
@@ -1570,6 +1595,7 @@ function setupAutoRestart(socket, number) {
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                 redxLog(`Logged out for ${number} — not auto-reconnecting.`, 'error');
                 dropThisSocketOnly();
+                await wipeDeadSession(sanitizedNumber);
                 return;
             }
 
@@ -1583,7 +1609,7 @@ function setupAutoRestart(socket, number) {
             if (restartAttempts < maxRestartAttempts) {
                 reconnecting = true;
                 restartAttempts++;
-                const waitMs = Math.min(3000 * restartAttempts, 30000);
+                const waitMs = Math.min(2000 * restartAttempts, 20000);
                 redxLog(`Reconnecting ${number} (${restartAttempts}/${maxRestartAttempts}) in ${waitMs / 1000}s...`, 'warning');
                 dropThisSocketOnly();
                 await delay(waitMs);
@@ -2353,15 +2379,19 @@ async function autoReconnectFromMongoDB() {
         redxLog('Attempting auto-reconnect from MongoDB...', 'info');
         const numbers = await getAllNumbersFromMongoDB();
         if (!numbers.length) { redxLog('No numbers in MongoDB', 'info'); return; }
-        for (const number of numbers) {
-            if (isNumberAlreadyConnected(number)) continue;
-            try {
-                const mockRes = { headersSent: false, json: () => {}, status: () => mockRes, send: () => {}, setHeader: () => {} };
-                await redxPair(number, mockRes);
-            } catch (e) {
-                redxLog(`Auto-reconnect failed for ${number}: ${e.message}`, 'error');
-            }
-            await delay(2000);
+        const pending = numbers.filter((number) => !isNumberAlreadyConnected(number));
+        const BATCH = 8;
+        for (let i = 0; i < pending.length; i += BATCH) {
+            const batch = pending.slice(i, i + BATCH);
+            await Promise.all(batch.map(async (number) => {
+                try {
+                    const mockRes = { headersSent: false, json: () => {}, status: () => mockRes, send: () => {}, setHeader: () => {} };
+                    await redxPair(number, mockRes);
+                } catch (e) {
+                    redxLog(`Auto-reconnect failed for ${number}: ${e.message}`, 'error');
+                }
+            }));
+            if (i + BATCH < pending.length) await delay(800);
         }
         redxLog('Auto-reconnect completed', 'success');
     } catch (e) {
@@ -2380,9 +2410,18 @@ process.on('exit', () => {
         try { closeSocketSafe(socket); } catch (_) {}
         detachSession(number, socket);
     });
-    const sessionDir = path.join(__dirname, 'session');
-    if (fs.existsSync(sessionDir)) fs.emptyDirSync(sessionDir);
 });
+
+setInterval(() => {
+    for (const [number, socket] of activeSockets.entries()) {
+        if (isSocketAlive(socket)) continue;
+        redxLog(`Watchdog: ${number} socket is dead — isolating and reconnecting`, 'warning');
+        detachSession(number, socket);
+        try { closeSocketSafe(socket); } catch (_) {}
+        const mockRes = { headersSent: false, json: () => {}, status: () => mockRes, send: () => {}, setHeader: () => {} };
+        redxPair(number, mockRes).catch((e) => redxLog(`Watchdog reconnect failed for ${number}: ${e.message}`, 'error'));
+    }
+}, 45000);
 
 // process.on('exit') can't reliably run async code — Node gives it no time
 // to wait on a Promise. SIGTERM (what Railway/most hosts send before killing
