@@ -116,7 +116,7 @@ cmd({
 
 cmd({
   pattern: "seriesloaded",
-  alias: ["series", "seriez", "slhome"],
+  alias: ["seriez", "slhome"],
   react: "📺",
   desc: "Browse or search Seriesloaded / Seriezloaded titles",
   category: "download",

@@ -1,5 +1,8 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
+const { scrapeTikSnap } = require('../lib/tiksnap');
+const { scrapeTikTokId } = require('../lib/tiktokid');
+const { AllMediaDL } = require('../lib/allmediadl');
 
 const CLOUDINARY_IMAGE = 'https://res.cloudinary.com/di2a9lenz/image/upload/v1786909227/omegatech_ai_media/upload-1786909226872.jpg';
 const NEWSLETTER_JID = '120363431455356251@newsletter';
@@ -419,6 +422,31 @@ async function fetchMedia(url) {
   const tasks = [];
 
   if (source === 'TikTok') {
+    tasks.push(async () => {
+      const info = await scrapeTikSnap(url);
+      const r = emptyResult('TikTok');
+      r.title = info.description || 'TikTok';
+      r.author = info.author?.nickname || info.author?.uniqueId || '';
+      r.thumbnail = info.cover || '';
+      r.duration = info.duration ? `${info.duration}s` : '';
+      if (info.downloads.originalHd?.url) pushUnique(r.videos, { url: info.downloads.originalHd.url, quality: 'HD' });
+      if (info.downloads.videoNoWm?.url) pushUnique(r.videos, { url: info.downloads.videoNoWm.url, quality: 'NoWM' });
+      if (info.downloads.audio?.url) pushUnique(r.audios, { url: info.downloads.audio.url, format: 'mp3' });
+      (info.downloads.images || []).forEach((img) => pushUnique(r.photos, { url: img.url }));
+      return (r.videos.length || r.audios.length || r.photos.length) ? r : null;
+    });
+    tasks.push(async () => {
+      const info = await scrapeTikTokId(url);
+      const r = emptyResult('TikTok');
+      r.title = info.title || 'TikTok';
+      r.author = info.author || '';
+      r.thumbnail = info.cover || '';
+      r.duration = info.duration ? `${info.duration}s` : '';
+      if (info.downloads.noWatermark?.url) pushUnique(r.videos, { url: info.downloads.noWatermark.url, quality: 'NoWM' });
+      if (info.downloads.watermark?.url) pushUnique(r.videos, { url: info.downloads.watermark.url, quality: 'Watermark' });
+      if (info.downloads.audio?.url) pushUnique(r.audios, { url: info.downloads.audio.url, format: 'mp3' });
+      return (r.videos.length || r.audios.length) ? r : null;
+    });
     tasks.push(() => getJson(`https://tikwm.com/api/?url=${enc}&hd=1`).then(fromTikwm));
     tasks.push(() => getJson(`https://www.tikwm.com/api/?url=${enc}&hd=1`).then(fromTikwm));
   }
@@ -475,6 +503,18 @@ async function fetchMedia(url) {
     });
   }
 
+  tasks.push(async () => {
+    const client = new AllMediaDL({ timeoutMs: 40000 });
+    const info = await client.scrape(url, { format: source === 'YouTube' ? 'video' : 'video' });
+    if (!info?.downloadUrl) return null;
+    const r = emptyResult(info.platform || source);
+    r.title = info.title || '';
+    r.author = info.uploader || '';
+    r.thumbnail = info.thumbnailUrl || '';
+    r.duration = info.durationSeconds ? `${info.durationSeconds}s` : '';
+    pushUnique(r.videos, { url: info.downloadUrl, quality: info.height ? `${info.height}p` : 'HD' });
+    return r.videos.length ? r : null;
+  });
   tasks.push(() => getJson(`https://api.omegatech.app/api/download/All-downloader-v2?action=download&url=${enc}`, 60000).then(fromAllDownloader));
   tasks.push(() => getJson(`https://api.omegatech.app/api/download/youtube?action=download&url=${enc}`, 60000).then((d) => fromOmegaYt(d, source)));
   tasks.push(() => getJson(`https://tikwm.com/api/?url=${enc}&hd=1`).then((d) => fromTikwm(d, source)));
