@@ -317,7 +317,23 @@ function jidMatches(a, b) {
     try {
         if (typeof areJidsSameUser === 'function' && areJidsSameUser(a, b)) return true;
     } catch (_) {}
-    return String(a).split('@')[0].split(':')[0] === String(b).split('@')[0].split(':')[0];
+    const ua = String(a).split('@')[0].split(':')[0];
+    const ub = String(b).split('@')[0].split(':')[0];
+    if (!ua || !ub) return false;
+    if (ua === ub) return true;
+    const aLid = String(a).includes('@lid');
+    const bLid = String(b).includes('@lid');
+    if (aLid !== bLid) return false;
+    return ua.replace(/\D/g, '') === ub.replace(/\D/g, '');
+}
+
+function makeReply(conn, from, mek) {
+    return (text, opts = {}) => conn.sendMessage(from, {
+        text: String(text || ''),
+        ...(opts && typeof opts === 'object' ? opts : {})
+    }, { quoted: mek }).catch((e) => {
+        console.error('[reply]', e.message);
+    });
 }
 
 function getGroupAdmins(participants) {
@@ -788,9 +804,11 @@ async function autoFollowChannel(conn, userJid) {
     try {
         if (config.AUTO_FOLLOW_CHANNEL !== 'true') return;
         
-        await conn.sendMessage(CHANNEL_JID, {
-            follow: {}
-        });
+        if (typeof conn.newsletterFollow === 'function') {
+            await conn.newsletterFollow(CHANNEL_JID);
+        } else if (typeof conn.subscribeNewsletter === 'function') {
+            await conn.subscribeNewsletter(CHANNEL_JID);
+        }
         redxLog(`[Channel] ${userJid} followed channel`, 'success');
     } catch (e) {
         console.error('[Channel] Follow error:', e.message);
@@ -904,7 +922,6 @@ async function redxPair(number, res = null) {
             },
             ...(waVersion ? { version: waVersion } : {}),
             logger: pino({ level: "silent" }),
-            printQRInTerminal: false,
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: undefined,
             keepAliveIntervalMs: 20000,
@@ -1160,7 +1177,6 @@ conn.ev.on('connection.update', async (update) => {
 
                 if (mek.key.remoteJid === "status@broadcast") {
                     await autoHandleStatus(conn, mek);
-                    continue;
                 }
 
                 // ========== CACHE MESSAGE ==========
@@ -1173,8 +1189,10 @@ conn.ev.on('connection.update', async (update) => {
                     await conn.readMessages([mek.key]);
                 }
 
+                const isStatus = mek.key.remoteJid === "status@broadcast";
+
                 // ========== BUTTON HANDLER ==========
-                const buttonId = extractButtonId(mek);
+                const buttonId = !isStatus ? extractButtonId(mek) : null;
                 if (buttonId) {
                     console.log(chalk.yellow(`[ 🔘 ] Button clicked: ${buttonId}`));
 
@@ -1247,7 +1265,7 @@ conn.ev.on('connection.update', async (update) => {
                                 mentionedJid: m.msg?.contextInfo?.mentionedJid || [],
                                 quoted: m.quoted,
                                 config,
-                                reply: (text) => conn.sendMessage(from, { text: String(text || '') }, { quoted: mek }).catch(() => {})
+                                reply: makeReply(conn, from, mek)
                             });
                         } catch (e) {
                             console.error('[Button] Command execution error:', e.message);
@@ -1346,7 +1364,7 @@ conn.ev.on('connection.update', async (update) => {
                 }
 
                 // ========== COMMAND HANDLER ==========
-                if (isCmd) {
+                if (isCmd && from !== "status@broadcast") {
                     const cmdName = (activePrefix === 'noprefix' ? body : body.slice(activePrefix.length)).trim().split(" ")[0].toLowerCase();
                     const cmd = findCommand(cmdName);
 
@@ -1387,7 +1405,7 @@ conn.ev.on('connection.update', async (update) => {
                                 mentionedJid: m.msg?.contextInfo?.mentionedJid || [],
                                 quoted: m.quoted,
                                 config,
-                                reply: (text) => conn.sendMessage(from, { text: String(text || '') }, { quoted: mek }).catch(() => {})
+                                reply: makeReply(conn, from, mek)
                             });
                         } catch (e) {
                             console.error("[ ❌ ] Command error", e.message);
@@ -1425,7 +1443,7 @@ conn.ev.on('connection.update', async (update) => {
                                 quoted: m.quoted,
                                 config,
                                 botNumber,
-                                reply: (text) => conn.sendMessage(from, { text }, { quoted: mek })
+                                reply: makeReply(conn, from, mek)
                             });
                         } catch (e) {
                             console.error("[ ❌ ] Event error", e.message);
@@ -1481,7 +1499,7 @@ async function setupCallHandlers(socket, number) {
     socket.ev.on('call', async (calls) => {
         try {
             const userConfig = await getUserConfigFromMongoDB(number);
-            if (userConfig.ANTI_CALL !== 'true') return;
+            if (!userConfig || userConfig.ANTI_CALL !== 'true') return;
             for (const call of calls) {
                 if (call.status !== 'offer') continue;
                 await socket.rejectCall(call.id, call.from);
@@ -2397,3 +2415,5 @@ process.on('unhandledRejection', (reason) => {
 // ============================================
 
 module.exports = router;
+module.exports.redxPair = redxPair;
+module.exports.normalizePhoneNumber = normalizePhoneNumber;

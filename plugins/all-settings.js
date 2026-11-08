@@ -98,7 +98,7 @@ async(conn, mek, m, { args, isOwner, reply, botNumber, config }) => {
     } else if (value === 'off' || value === 'false') {
         await updateConfig('ANTI_CALL', 'false', botNumber, config, reply);
     } else {
-        reply(`*CURRENTLY :❯ ${config.AUTO_RECORDING} 😊*\n\n*WHOEVER CALLS WILL BE AUTOMATICALLY REJECTED 😃 TO ENABLE THIS SETTING TYPE ☺️*\n*👑 ❮ANTICALL ON❯ 👑*\n*TO DISABLE ANTICALL TYPE ☺️*\n*👑 ❮ANTICALL OFF❯ 👑*`);
+        reply(`*CURRENTLY :❯ ${config.ANTI_CALL || 'false'} 😊*\n\n*WHOEVER CALLS WILL BE AUTOMATICALLY REJECTED 😃 TO ENABLE THIS SETTING TYPE ☺️*\n*👑 ❮ANTICALL ON❯ 👑*\n*TO DISABLE ANTICALL TYPE ☺️*\n*👑 ❮ANTICALL OFF❯ 👑*`);
     }
 });
 
@@ -112,8 +112,8 @@ cmd({
     category: "settings",
     react: "👑"
 },
-async(conn, mek, m, { args, isOwner, reply, botNumber, config }) => {
-    if (!isOwner) return reply("*THIS COMMAND IS ONLY FOR ME 😎*");
+async(conn, mek, m, { args, isOwner, isAdmins, reply, botNumber, config }) => {
+    if (!isOwner && !isAdmins) return reply("*Only group admins or the owner can toggle welcome.*");
     const value = args[0]?.toLowerCase();
 
     if (value === 'on' || value === 'true') {
@@ -136,8 +136,8 @@ cmd({
     category: "settings",
     react: "👑"
 },
-async(conn, mek, m, { args, isOwner, reply, botNumber, config }) => {
-    if (!isOwner) return reply("*THIS COMMAND IS ONLY FOR ME 😎*");
+async(conn, mek, m, { args, isOwner, isAdmins, reply, botNumber, config }) => {
+    if (!isOwner && !isAdmins) return reply("*Only group admins or the owner can toggle goodbye.*");
     const value = args[0]?.toLowerCase();
 
     if (value === 'on' || value === 'true') {

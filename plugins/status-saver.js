@@ -2,22 +2,31 @@ const { cmd } = require("../redx");
 
 cmd({
   on: "body",
-  react: "📤",
   filename: __filename
 }, async (client, mek, m, { body, sender, from }) => {
-
   if (from !== "status@broadcast") return;
 
   const text = (body || "").toLowerCase().trim();
   if (!["send", "sendme", "save"].includes(text)) return;
 
-  const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-  if (!quoted) return;
+  try {
+    const quoted = m.quoted;
+    if (!quoted) return;
+    const type = quoted.mtype || "";
+    const buffer = typeof quoted.download === "function" ? await quoted.download() : null;
+    if (!buffer) return;
 
-  let msg = {};
-  if (quoted.imageMessage) msg = { image: { url: quoted.imageMessage.url } };
-  else if (quoted.videoMessage) msg = { video: { url: quoted.videoMessage.url } };
-  else return;
-
-  await client.sendMessage(sender, msg);
+    let msg = null;
+    if (type === "imageMessage" || quoted.imageMessage) {
+      msg = { image: buffer, caption: quoted.text || "" };
+    } else if (type === "videoMessage" || quoted.videoMessage) {
+      msg = { video: buffer, caption: quoted.text || "" };
+    } else if (type === "audioMessage" || quoted.audioMessage) {
+      msg = { audio: buffer, mimetype: "audio/mp4", ptt: false };
+    }
+    if (!msg) return;
+    await client.sendMessage(sender, msg);
+  } catch (e) {
+    console.error("[status-saver]", e.message);
+  }
 });

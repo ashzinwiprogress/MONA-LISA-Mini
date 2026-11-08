@@ -46,7 +46,7 @@ cmd({
 `.trim();
 
         await conn.sendMessage(from, {
-            image: { url: config.IMAGE_PATH },
+            image: { url: config.IMAGE_PATH || 'https://files.catbox.moe/4dwiou.png' },
             caption,
             contextInfo: {
                 mentionedJid: [m.sender],

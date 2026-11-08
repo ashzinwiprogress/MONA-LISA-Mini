@@ -499,7 +499,7 @@ async function fetchMedia(url) {
 
 cmd({
   pattern: 'dl',
-  alias: ['download', 'downloader', 'tt', 'tw', 'sn', 'bl', 'bilibili', 'tiktok', 'twitter', 'snapchat', 'media', 'getvideo'],
+  alias: ['download', 'downloader', 'getvideo'],
   react: '📥',
   desc: 'Download videos, audios, and images from TikTok, Facebook, Twitter, YouTube, Snapchat, Instagram and more',
   category: 'downloader',

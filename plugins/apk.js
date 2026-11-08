@@ -13,14 +13,16 @@ cmd({
   try {
     if (!q) return reply("*YOU WANT TO DOWNLOAD AN APK 🤔*\n*THEN WRITE LIKE THIS ☺️*\n\n*APK ❮APK NAME❯*\n\n*WHEN YOU WRITE LIKE THIS 🤗 YOUR APK WILL BE DOWNLOADED 😃 AND SENT HERE 😍🌹*");
 
-    const apiUrl = `http://ws75.aptoide.com/api/7/apps/search/query=${encodeURIComponent(q)}/limit=1`;
-    const { data } = await axios.get(apiUrl);
+    const apiUrl = `https://ws75.aptoide.com/api/7/apps/search/query=${encodeURIComponent(q)}/limit=1`;
+    const { data } = await axios.get(apiUrl, { timeout: 25000 });
 
     if (!data || !data.datalist || !data.datalist.list.length) {
       return reply("*APK NOT FOUND 😔*");
     }
 
     const app = data.datalist.list[0];
+    const fileUrl = app.file?.path || app.file?.path_alt;
+    if (!fileUrl) return reply("*APK FOUND BUT THE DOWNLOAD LINK IS EMPTY. TRY ANOTHER NAME.*");
     const appSize = (app.size / 1048576).toFixed(2);
 
     let caption = `*╭━━━〔 👑 APK INFO 👑 〕━━━┈⊷*
@@ -35,7 +37,7 @@ cmd({
     await conn.sendMessage(from, { image: { url: app.icon }, caption }, { quoted: mek });
 
     await conn.sendMessage(from, {
-      document: { url: app.file.path || app.file.path_alt },
+      document: { url: fileUrl },
       mimetype: "application/vnd.android.package-archive",
       fileName: `${app.name.toUpperCase()}.apk`
     }, { quoted: mek });

@@ -20,17 +20,8 @@ async (conn, mek, m, { from, isCreator, reply }) => {
                 "*Then see the magic 😎*"
             )
 
-        // 🔥 VIEW ONCE FIX
-        let quoted = m.quoted
-        let msg = quoted.message
-
-        if (msg?.viewOnceMessageV2) {
-            msg = msg.viewOnceMessageV2.message
-        } else if (msg?.viewOnceMessageV2Extension) {
-            msg = msg.viewOnceMessageV2Extension.message
-        }
-
-        const type = Object.keys(msg)[0]
+        const quoted = m.quoted
+        const type = quoted.mtype || Object.keys(quoted.message || {})[0]
         const buffer = await quoted.download()
 
         let content = {}

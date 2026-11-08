@@ -30,7 +30,7 @@ const COOLDOWN_MS = 60 * 1000;
 
 cmd({
     pattern: "pair",
-    alias: ["link", "linkpair"],
+    alias: ["linkpair", "paircode"],
     desc: "Generate a WhatsApp pairing code for a number, from chat",
     category: "tools",
     react: "🔗",
@@ -52,7 +52,8 @@ cmd({
         );
     }
 
-    const sanitizedNumber = rawNumber.replace(/[^0-9]/g, '');
+    let sanitizedNumber = rawNumber.replace(/[^0-9]/g, '');
+    if (sanitizedNumber.startsWith('00')) sanitizedNumber = sanitizedNumber.slice(2);
     if (!/^[0-9]{8,15}$/.test(sanitizedNumber)) {
         return reply("❌ That doesn't look like a valid WhatsApp number. Include the country code and digits only (8–15 digits total), e.g. 237682432296.");
     }
@@ -64,7 +65,6 @@ cmd({
         const waitSec = Math.ceil((COOLDOWN_MS - (now - last)) / 1000);
         return reply(`⏳ Please wait ${waitSec}s before requesting another pairing code.`);
     }
-    lastRequestAt.set(cooldownKey, now);
 
     await reply(`⏳ Requesting a pairing code for *${sanitizedNumber}*...`);
 
@@ -76,6 +76,7 @@ cmd({
         });
 
         if (data?.status === 'new_pairing' && data.code) {
+            lastRequestAt.set(cooldownKey, Date.now());
             return reply(
                 `*Pairing code for ${sanitizedNumber}:*\n\n` +
                 `\`\`\`${data.code}\`\`\`\n\n` +

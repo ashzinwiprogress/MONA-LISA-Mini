@@ -2,6 +2,7 @@ const { sleep } = require('../lib/functions');
 const config = require('../config');
 const { cmd } = require("../redx");
 const { fakevCard } = require('../lib/fakevCard');
+const { resolveUpdateJid, resolveUpdateJids, mentionList, botParticipant, isBotParticipant } = require('../lib/jid');
 
 // Command to list all pending group join requests
 cmd({
@@ -182,24 +183,25 @@ async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sen
 // ==================== FIXED KICK COMMAND ====================
 cmd({
     pattern: "kick",
-    alias: ["remove","k"],
+    alias: ["remove"],
     desc: "Remove a group member",
     category: "admin",
     react: "🗑️",
     filename: __filename
 },
-async (conn, mek, m, { from, isGroup, isAdmins, isBotAdmins, reply, mentionedJid, quoted }) => {
+async (conn, mek, m, { from, isGroup, isAdmins, isBotAdmins, reply, mentionedJid, quoted, participants }) => {
     try {
         if (!isGroup) return reply("❌ This command only works in groups.");
         if (!isAdmins) return reply("❌ Only group admins can use this command.");
         if (!isBotAdmins) return reply("❌ I need admin rights to remove members.");
 
-        const target = quoted?.sender || mentionedJid?.[0];
-        if (!target) return reply("❌ Reply to a message or mention a user!");
+        const raw = quoted?.sender || mentionedJid?.[0];
+        if (!raw) return reply("❌ Reply to a message or mention a user!");
+        const target = resolveUpdateJid(participants, raw);
 
         await conn.groupParticipantsUpdate(from, [target], "remove");
         await conn.sendMessage(from, {
-            text: `🚫 @${target.split("@")[0]} has been removed!`,
+            text: `🚫 @${String(target).split("@")[0]} has been removed!`,
             mentions: [target]
         }, { quoted: m });
 
@@ -223,15 +225,11 @@ async (conn, mek, m, { from, isGroup, isAdmins, isBotAdmins, reply, participants
         if (!isAdmins) return reply("❌ Only admins can use this!");
         if (!isBotAdmins) return reply("❌ I need to be admin!");
 
-        const digits = (jid) => String(jid || '').replace(/[^0-9]/g, '');
-        const sameUser = (a, b) => {
-            const da = digits(a);
-            const db = digits(b);
-            return da && db && da === db;
-        };
-        const admins = participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin').map(p => p.id);
-        const botJid = conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id;
-        const toKick = participants.map(p => p.id).filter(id => !admins.includes(id) && !sameUser(id, botJid) && !sameUser(id, conn.user?.lid));
+        const toKick = participants
+            .filter((p) => !(p.admin === 'admin' || p.admin === 'superadmin' || p.isAdmin || p.isSuperAdmin))
+            .filter((p) => !isBotParticipant(p, conn))
+            .map((p) => p.lid || p.id)
+            .filter(Boolean);
 
         if (toKick.length === 0) return reply("✅ No non-admin members to remove.");
 
@@ -329,7 +327,7 @@ async (conn, mek, m, {
 // ==================== FIXED PROMOTE COMMAND ====================
 cmd({
 pattern: "promote",
-alias: ["p", "giveadmin", "makeadmin"],
+alias: ["giveadmin", "makeadmin"],
 desc: "Promote a user to admin",
 category: "group",
 react: "👑",
@@ -343,7 +341,8 @@ mentionedJid,
 sender,
 isCreator,
 isAdmins,
-isBotAdmins
+isBotAdmins,
+participants
 }) => {
 try {
     if (!isGroup) return reply("⚠️ This command only works in groups.");
@@ -362,7 +361,7 @@ try {
         return reply("❓ Please mention or quote a user to promote!\nExample: .promote @user");  
     }  
 
-    users = [...new Set(users.filter(user => user && user.includes('@')))];  
+    users = resolveUpdateJids(participants, users.filter(user => user && String(user).includes('@')));  
     if (users.length === 0) return reply("⚠️ Couldn't determine target user.");  
 
     try {  
@@ -390,7 +389,7 @@ try {
 // ==================== FIXED DEMOTE COMMAND ====================
 cmd({
 pattern: "demote",
-alias: ["d", "dismiss", "removeadmin"],
+alias: ["dismiss", "removeadmin"],
 desc: "Demote a group admin",
 category: "group",
 react: "⬇️",
@@ -404,7 +403,8 @@ mentionedJid,
 sender,
 isCreator,
 isAdmins,
-isBotAdmins
+isBotAdmins,
+participants
 }) => {
 try {
     if (!isGroup) return reply("⚠️ This command only works in groups.");
@@ -423,7 +423,7 @@ try {
         return reply("❓ Please mention or quote an admin to demote!\nExample: .demote @admin");  
     }  
 
-    users = [...new Set(users.filter(user => user && user.includes('@')))];  
+    users = resolveUpdateJids(participants, users.filter(user => user && String(user).includes('@')));  
     if (users.length === 0) return reply("⚠️ Couldn't determine target user.");  
 
     try {  
@@ -467,19 +467,23 @@ try {
     if (!isGroup) return reply("⚠️ This command only works in groups.");
     if (!isAdmins) return reply("❌ Only group admins can make bot admin!");
 
-    // Check if bot is already admin  
     try {  
         const groupMetadata = await conn.groupMetadata(from);  
-        const botParticipant = groupMetadata.participants.find(p => p.id === conn.user.id);  
-        if (botParticipant && botParticipant.admin) {  
+        const botP = botParticipant(groupMetadata.participants || [], conn);
+        if (botP && (botP.admin === 'admin' || botP.admin === 'superadmin' || botP.isAdmin)) {  
             return reply("✅ Bot is already admin in this group!");  
         }  
+        if (botP) {
+            await conn.groupParticipantsUpdate(from, [botP.lid || botP.id], "promote");
+            return reply("✅ *Bot is now admin.*\n\nYou can use:\n• .promote @user\n• .demote @admin\n• .kick @user");
+        }
     } catch (e) {  
         console.log("Could not fetch group metadata, trying to promote bot...");  
     }  
     
     try {  
-        await conn.groupParticipantsUpdate(from, [conn.user.id], "promote");  
+        const promoteId = conn.user?.lid || conn.user?.id;
+        await conn.groupParticipantsUpdate(from, [promoteId], "promote");  
         reply("✅ *Bot ko admin banaya gaya!*\n\nAb aap use kar sakte hain:\n• .promote @user\n• .demote @admin\n• .kick @user");  
     } catch (err) {  
         if (err.message.includes("not authorized")) {  
@@ -531,11 +535,8 @@ try {
         const directNumbers = textString.match(/\d{10,15}/g);  
         if (directNumbers) {  
             users = directNumbers.map(num => {  
-                let cleanNum = num.replace(/\D/g, '');  
-                if (cleanNum.startsWith('3')) {  
-                    cleanNum = '92' + cleanNum;  
-                }  
-                if (cleanNum.length >= 10) {  
+                const cleanNum = num.replace(/\D/g, '');  
+                if (cleanNum.length >= 8 && cleanNum.length <= 15) {  
                     return cleanNum + '@s.whatsapp.net';  
                 }  
                 return null;  
@@ -600,15 +601,17 @@ try {
     
     let text = `📢 *TAG ALL*\n\n📝 Message: ${message}\n\n`;  
     
+    const mentions = mentionList(participants);
     participants.forEach((member, i) => {  
-        text += `${i+1}. @${member.id.split('@')[0]}\n`;  
+        const id = member.id || member.jid || member.lid || '';
+        text += `${i+1}. @${String(id).split('@')[0]}\n`;  
     });  
     
     text += `\n✅ Total: ${participants.length} members`;  
     
     await conn.sendMessage(from, {  
         text: text,  
-        mentions: participants.map(p => p.id)  
+        mentions
     }, { quoted: fakevCard });
 
 } catch (err) {
@@ -620,7 +623,7 @@ try {
 // ==================== FIXED HIDETAG COMMAND ====================
 cmd({
   pattern: "hidetag",
-  alias: ["tag", "h"],  
+  alias: ["tag"],  
   react: "🔊",
   desc: "To Tag all Members for Any Message/Media",
   category: "group",
@@ -639,7 +642,7 @@ async (conn, mek, m, {
     if (!isGroup) return reply("❌ This command can only be used in groups.");
     if (!isAdmins && !isCreator) return reply("❌ Only group admins can use this command.");
 
-    const mentionAll = { mentions: participants.map(u => u.id) };
+    const mentionAll = { mentions: mentionList(participants) };
 
     if (!q && !m.quoted) {
       return reply("❌ Please provide a message or reply to a message.");
@@ -799,15 +802,15 @@ async (conn, mek, m, {
 
     try {
         const config = require('../config');
-        const ownerJids = (config.OWNER_NUMBER || []).map(n => `${n.replace(/[^0-9]/g, '')}@s.whatsapp.net`);
-        const ignoreJids = [
-            ...ownerJids,
-            botNumber ? `${botNumber}@s.whatsapp.net` : null
-        ].filter(Boolean);
-
+        const ownerNums = (config.OWNER_NUMBER || []).map(n => String(n).replace(/[^0-9]/g, ''));
         const participants = groupMetadata.participants || [];
-        const targets = participants.filter(p => !ignoreJids.includes(p.id));
-        const jids = targets.map(p => p.id);
+        const targets = participants.filter((p) => {
+            if (isBotParticipant(p, conn)) return false;
+            const ids = [p.id, p.jid, p.lid, p.phoneNumber, p.pn].filter(Boolean).map((id) => String(id).replace(/[^0-9]/g, ''));
+            if (botNumber && ids.includes(String(botNumber).replace(/[^0-9]/g, ''))) return false;
+            return !ids.some((id) => ownerNums.includes(id));
+        });
+        const jids = targets.map((p) => p.lid || p.id).filter(Boolean);
 
         if (jids.length === 0) return reply("✅ No members to remove.");
 

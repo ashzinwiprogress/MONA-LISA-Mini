@@ -86,7 +86,12 @@ async function fetchAPI(action, limit = 80) {
     timeout: 30000,
     headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' }
   });
-  return data?.data || data?.result || data;
+  const payload = data?.data || data?.result || data || {};
+  if (action === 'otps') {
+    const otps = payload.otps || payload.messages || payload.result || (Array.isArray(payload) ? payload : []);
+    return { ...payload, otps: Array.isArray(otps) ? otps : [] };
+  }
+  return payload;
 }
 
 function normalizeNumbers(raw) {
@@ -350,7 +355,10 @@ cmd({
       const target = digits(args[1] || '');
       if (!target) return reply(`Usage: ${pre}tempnumber wait +79246787770`);
       const timeoutSec = Math.min(Math.max(parseInt(args[2], 10) || 180, 30), 300);
-      await watchOtp(conn, from, mek, reply, target, timeoutSec);
+      watchOtp(conn, from, mek, reply, target, timeoutSec).catch((e) => {
+        console.error('TempNumber wait', e.message);
+        reply(`OTP wait failed: ${e.message}`);
+      });
       return;
     }
 

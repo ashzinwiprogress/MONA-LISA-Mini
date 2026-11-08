@@ -2,7 +2,7 @@ const { cmd } = require('../redx');
 
 cmd({
   pattern: "sonic",
-  alias: ["game", "speedydash", "speedy", "dash"],
+  alias: ["speedydash", "speedy", "dash"],
   react: "🦔",
   desc: "Speedy Dash Game - Fixed Render",
   category: "games",

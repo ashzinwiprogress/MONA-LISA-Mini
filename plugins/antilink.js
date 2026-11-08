@@ -6,6 +6,7 @@
 
 const { cmd } = require('../redx');
 const config = require('../config');
+const { resolveUpdateJid } = require('../lib/jid');
 
 // ─── ALLOWED DOMAINS ───
 const ALLOWED_DOMAINS = [
@@ -27,15 +28,15 @@ const ALLOWED_DOMAINS = [
 const LINK_PATTERNS = [
     /https?:\/\/[^\s]+/gi,
     /www\.[^\s]+/gi,
-    /[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi
+    /(?:chat|wa)\.me\/[^\s]+/gi
 ];
 
-// ─── CHECK IF LINK IS ALLOWED ───
 function isAllowedLink(url) {
     try {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname.toLowerCase();
-        return ALLOWED_DOMAINS.some(domain => hostname.includes(domain));
+        const raw = String(url || '').trim();
+        const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+        const hostname = new URL(withProto).hostname.toLowerCase();
+        return ALLOWED_DOMAINS.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
     } catch {
         return false;
     }
@@ -163,7 +164,7 @@ cmd({
     pattern: "antilink_handler",
     on: "body",
     filename: __filename
-}, async (conn, mek, m, { from, isGroup, isBotAdmins, isAdmins, isOwner, sender, senderNumber, reply }) => {
+}, async (conn, mek, m, { from, isGroup, isBotAdmins, isAdmins, isOwner, sender, senderNumber, reply, participants }) => {
 
     // ─── SKIP IF NOT GROUP ───
     if (!isGroup) return;
@@ -234,7 +235,7 @@ cmd({
     // ─── ACTION: KICK ───
     if (action === 'kick' && warnCount >= maxWarns) {
         try {
-            await conn.groupParticipantsUpdate(from, [sender], 'remove');
+            await conn.groupParticipantsUpdate(from, [resolveUpdateJid(participants, sender)], 'remove');
             await conn.sendMessage(from, {
                 text: `👢 *User kicked!*
 

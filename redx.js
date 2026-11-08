@@ -4,11 +4,14 @@ const commandIndex = new Map();
 function indexCommand(data) {
   const pattern = String(data.pattern || '').toLowerCase().trim();
   if (pattern) commandIndex.set(pattern, data);
-  for (const alias of data.alias || []) {
+  data.alias = (data.alias || []).filter((alias) => {
     const n = String(alias || '').toLowerCase().trim();
-    if (!n || commandIndex.has(n)) continue;
+    if (!n || n === pattern) return false;
+    if (n.length === 1) return false;
+    if (commandIndex.has(n)) return false;
     commandIndex.set(n, data);
-  }
+    return true;
+  });
 }
 
 function cmd(info, func) {

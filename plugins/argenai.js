@@ -47,12 +47,12 @@ async (conn, mek, m, { from, q, reply })=>{
 │
 ├─ *COMMANDS*
 │ • .argen → This menu
-│ • .imagine <prompt> → Image
+│ • .agenimg <prompt> → Image
 │ • .argenvideo <prompt> → Video
 │ • .argen models → List models
 │
 ├─ *IMAGE EXAMPLE*
-│ .imagine a cat at sunset, cinematic --model flux2_klein_fast --ratio 16:9
+│ .agenimg a cat at sunset, cinematic --model flux2_klein_fast --ratio 16:9
 │
 ├─ *VIDEO EXAMPLE*
 │ .argenvideo a cat dancing --engine wan2_2 --res 720p --duration 5
@@ -71,10 +71,10 @@ async (conn, mek, m, { from, q, reply })=>{
 });
 
 // ===== IMAGE =====
-cmd({ pattern: "agenimg", alias: ["agenimg"], react: "✨", desc: "Argen Image Gen", category: "ai", filename: __filename },
+cmd({ pattern: "agenimg", alias: ["argenimg", "argenimage"], react: "✨", desc: "Argen Image Gen", category: "ai", filename: __filename },
 async (conn, mek, m, { from, q, reply })=>{
   try{
-    if(!q && !m.quoted) return reply('Usage: .imagine a cat on beach --model flux2_klein_fast --ratio 1:1\n. argen for menu');
+    if(!q && !m.quoted) return reply('Usage: .agenimg a cat on beach --model flux2_klein_fast --ratio 1:1\n.argen for menu');
     const {flags,prompt}=parseFlags(q||''); const finalPrompt=prompt||'a cat walking on beach at sunset, cinematic';
     const modelId=flags.model||'flux2_klein_fast'; const ratio=flags.ratio||'1:1'; const negativePrompt=flags.neg||'';
     await conn.sendMessage(from,{react:{text:"⏳",key:mek.key}});
